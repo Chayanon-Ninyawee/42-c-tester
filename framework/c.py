@@ -106,6 +106,27 @@ class CBuffer:
     def __repr__(self):
         return self.name
 
+    def offset(self, offset: int):
+        return CBufferOffset(self, offset)
+
+
+class CBufferOffset:
+    def __init__(self, buffer: CBuffer, offset: int):
+        if offset < 0 or offset > buffer.size:
+            raise ValueError(
+                f"buffer offset {offset} is outside buffer " f"of size {buffer.size}"
+            )
+
+        self.buffer = buffer
+        self.offset = offset
+
+    @property
+    def name(self):
+        return f"{self.buffer.name} + {self.offset}"
+
+    def __repr__(self):
+        return f"{self.buffer.name}.offset({self.offset})"
+
 
 class CFunction:
     def __init__(
@@ -207,11 +228,21 @@ class CCallResult:
 
         return self
 
-    def returned_pointer_is(self, buffer: CBuffer):
-        expected = self.pointer_values.get(buffer.name)
+    def returned_pointer_is(self, buffer):
+        if isinstance(buffer, CBufferOffset):
+            base = self.pointer_values.get(buffer.buffer.name)
 
-        if expected is None:
-            raise RuntimeError(f"buffer '{buffer.name}' pointer was not captured")
+            if base is None:
+                raise RuntimeError(
+                    f"buffer '{buffer.buffer.name}' pointer was not captured"
+                )
+
+            expected = hex(int(base, 16) + buffer.offset)
+        else:
+            expected = self.pointer_values.get(buffer.name)
+
+            if expected is None:
+                raise RuntimeError(f"buffer '{buffer.name}' pointer was not captured")
 
         if self.value != expected:
             self.failures.append(
@@ -324,7 +355,14 @@ class CContext:
         function: CFunction,
         arguments,
     ):
-        buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
+
+        buffers = []
+
+        for argument in arguments:
+            buffer = get_buffer(argument)
+
+            if buffer is not None and buffer not in buffers:
+                buffers.append(buffer)
 
         with tempfile.TemporaryDirectory(prefix="test-42-c-call-") as temp:
             temp_dir = Path(temp)
@@ -458,6 +496,9 @@ def generate_argument(argument):
     if isinstance(argument, CBuffer):
         return argument.name
 
+    if isinstance(argument, CBufferOffset):
+        return f"{argument.buffer.name} + {argument.offset}"
+
     return argument
 
 
@@ -468,6 +509,16 @@ def generate_buffer(buffer: CBuffer):
     values = ", ".join(f"0x{byte:02x}" for byte in buffer.data)
 
     return f"{buffer.type} {buffer.name}[{buffer.size}]" f" = {{ {values} }};"
+
+
+def get_buffer(argument):
+    if isinstance(argument, CBuffer):
+        return argument
+
+    if isinstance(argument, CBufferOffset):
+        return argument.buffer
+
+    return None
 
 
 def generate_harness(

@@ -40,6 +40,14 @@ project = Project(
                 returns="void",
                 args=["void *", "size_t"],
             ),
+            "ft_memcpy": FunctionDefinition(
+                returns="void *",
+                args=["void *", "const void *", "size_t"],
+            ),
+            "ft_memmove": FunctionDefinition(
+                returns="void *",
+                args=["void *", "const void *", "size_t"],
+            ),
         },
         link=[
             "libft.a",
@@ -57,5 +65,7 @@ project = Project(
         "ft_strlen",
         "ft_memset",
         "ft_bzero",
+        "ft_memcpy",
+        "ft_memmove",
     ],
 )
