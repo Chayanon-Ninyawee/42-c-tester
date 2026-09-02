@@ -3,76 +3,94 @@ from framework import TestSuite
 suite = TestSuite("ft_isalnum")
 
 
+def compare(c, argument, expected):
+    ft = c.ft_isalnum(argument)
+
+    libc = c.isalnum(argument)
+    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
+    libc_value = int(bool(libc.return_type.parse(libc.value)))
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        f"Test with isalnum({argument}) from libc",
+    ).assert_now()
+
+
 @suite.case("'A' is alphanumeric")
 def test_uppercase_start(c):
-    c.ft_isalnum("'A'").equals(1).assert_now()
+    compare(c, "'A'", 1)
 
 
 @suite.case("'Z' is alphanumeric")
 def test_uppercase_end(c):
-    c.ft_isalnum("'Z'").equals(1).assert_now()
+    compare(c, "'Z'", 1)
 
 
 @suite.case("'a' is alphanumeric")
 def test_lowercase_start(c):
-    c.ft_isalnum("'a'").equals(1).assert_now()
+    compare(c, "'a'", 1)
 
 
 @suite.case("'z' is alphanumeric")
 def test_lowercase_end(c):
-    c.ft_isalnum("'z'").equals(1).assert_now()
+    compare(c, "'z'", 1)
 
 
 @suite.case("'0' is alphanumeric")
 def test_digit_start(c):
-    c.ft_isalnum("'0'").equals(1).assert_now()
+    compare(c, "'0'", 1)
 
 
 @suite.case("'9' is alphanumeric")
 def test_digit_end(c):
-    c.ft_isalnum("'9'").equals(1).assert_now()
+    compare(c, "'9'", 1)
 
 
 @suite.case("'/' is not alphanumeric")
 def test_before_digits(c):
-    c.ft_isalnum("'/'").equals(0).assert_now()
+    compare(c, "'/'", 0)
 
 
 @suite.case("':' is not alphanumeric")
 def test_after_digits(c):
-    c.ft_isalnum("':'").equals(0).assert_now()
+    compare(c, "':'", 0)
 
 
 @suite.case("'[' is not alphanumeric")
 def test_after_uppercase(c):
-    c.ft_isalnum("'['").equals(0).assert_now()
+    compare(c, "'['", 0)
 
 
 @suite.case("'`' is not alphanumeric")
 def test_before_lowercase(c):
-    c.ft_isalnum("'`'").equals(0).assert_now()
+    compare(c, "'`'", 0)
 
 
 @suite.case("'{' is not alphanumeric")
 def test_after_lowercase(c):
-    c.ft_isalnum("'{'").equals(0).assert_now()
+    compare(c, "'{'", 0)
 
 
 @suite.case("' ' is not alphanumeric")
 def test_space(c):
-    c.ft_isalnum("' '").equals(0).assert_now()
+    compare(c, "' '", 0)
 
 
 @suite.case("'!' is not alphanumeric")
 def test_punctuation(c):
-    c.ft_isalnum("'!'").equals(0).assert_now()
+    compare(c, "'!'", 0)
 
 
 @suite.case("-1 is not alphanumeric")
 def test_negative(c):
-    c.ft_isalnum("-1").equals(0).assert_now()
+    compare(c, "-1", 0)
 
 
 @suite.case("127 is not alphanumeric")
 def test_127(c):
-    c.ft_isalnum("127").equals(0).assert_now()
+    compare(c, "127", 0)

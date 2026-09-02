@@ -3,129 +3,135 @@ from framework import TestSuite
 suite = TestSuite("ft_strlen")
 
 
+def compare(c, original, expected):
+    ft_buffer = c.buffer(
+        original,
+        size=len(original),
+        type="char",
+        name="ft",
+    )
+
+    libc_buffer = c.buffer(
+        original,
+        size=len(original),
+        type="char",
+        name="libc",
+    )
+
+    ft = c.ft_strlen(ft_buffer)
+
+    libc = c.strlen(libc_buffer)
+    libc_value = libc.return_type.parse(libc.value)
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        "Test with strlen() from libc",
+    )
+
+    ft.buffer_equals(
+        ft_buffer,
+        original,
+        "Input buffer was modified",
+    )
+
+    libc.buffer_equals(
+        libc_buffer,
+        original,
+        "Input buffer was modified by libc",
+    )
+
+    ft.assert_now()
+    libc.assert_now()
+
+
 @suite.case("empty string has length 0")
 def test_empty(c):
-    buffer = c.buffer(b"\x00", size=1, type="char")
+    original = b"\x00"
+    expected = 0
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(0)
-    result.buffer_equals(buffer, b"\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("'a' has length 1")
 def test_single_character(c):
-    buffer = c.buffer(b"a\x00", size=2, type="char")
+    original = b"a\x00"
+    expected = 1
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(1)
-    result.buffer_equals(buffer, b"a\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("'hello' has length 5")
 def test_basic(c):
-    buffer = c.buffer(b"hello\x00", size=6, type="char")
+    original = b"hello\x00"
+    expected = 5
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(5)
-    result.buffer_equals(buffer, b"hello\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("'Hello World' has length 11")
 def test_spaces(c):
-    buffer = c.buffer(b"Hello World\x00", size=12, type="char")
+    original = b"Hello World\x00"
+    expected = 11
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(11)
-    result.buffer_equals(buffer, b"Hello World\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("string with spaces")
 def test_multiple_spaces(c):
-    buffer = c.buffer(b"hello  world\x00", size=13, type="char")
+    original = b"hello  world\x00"
+    expected = 12
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(12)
-    result.buffer_equals(buffer, b"hello  world\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("digits are counted")
 def test_digits(c):
-    buffer = c.buffer(b"1234567890\x00", size=11, type="char")
+    original = b"1234567890\x00"
+    expected = 10
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(10)
-    result.buffer_equals(buffer, b"1234567890\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("punctuation is counted")
 def test_punctuation(c):
-    buffer = c.buffer(b"!@#$%^&*()\x00", size=11, type="char")
+    original = b"!@#$%^&*()\x00"
+    expected = 10
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(10)
-    result.buffer_equals(buffer, b"!@#$%^&*()\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("uppercase and lowercase are counted")
 def test_mixed_case(c):
-    buffer = c.buffer(b"AbCdEf\x00", size=7, type="char")
+    original = b"AbCdEf\x00"
+    expected = 6
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(6)
-    result.buffer_equals(buffer, b"AbCdEf\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("newline is counted")
 def test_newline(c):
-    buffer = c.buffer(b"hello\nworld\x00", size=12, type="char")
+    original = b"hello\nworld\x00"
+    expected = 11
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(11)
-    result.buffer_equals(buffer, b"hello\nworld\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("tab is counted")
 def test_tab(c):
-    buffer = c.buffer(b"hello\tworld\x00", size=12, type="char")
+    original = b"hello\tworld\x00"
+    expected = 11
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(11)
-    result.buffer_equals(buffer, b"hello\tworld\x00")
-    result.assert_now()
+    compare(c, original, expected)
 
 
 @suite.case("long string")
 def test_long_string(c):
-    buffer = c.buffer(
-        b"This is a reasonably long string for testing\x00",
-        size=45,
-        type="char",
-    )
+    original = b"This is a reasonably long string for testing\x00"
+    expected = 44
 
-    result = c.ft_strlen(buffer)
-
-    result.equals(44)
-    result.buffer_equals(
-        buffer,
-        b"This is a reasonably long string for testing\x00",
-    )
-    result.assert_now()
+    compare(c, original, expected)

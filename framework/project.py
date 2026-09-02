@@ -20,6 +20,9 @@ class BuildConfig:
 class FunctionDefinition:
     returns: str = "int"
     args: list[str] = field(default_factory=list)
+    headers: list[str] = field(default_factory=list)
+    link: list[str] = field(default_factory=list)
+    err_flags: bool = True
 
 
 @dataclass

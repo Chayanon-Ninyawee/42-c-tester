@@ -3,81 +3,99 @@ from framework import TestSuite
 suite = TestSuite("ft_isalpha")
 
 
+def compare(c, argument, expected):
+    ft = c.ft_isalpha(argument)
+
+    libc = c.isalpha(argument)
+    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
+    libc_value = int(bool(libc.return_type.parse(libc.value)))
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        f"Test with isalpha({argument}) from libc",
+    ).assert_now()
+
+
 @suite.case("'A' is alphabetic")
 def test_uppercase_start(c):
-    c.ft_isalpha("'A'").equals(1).assert_now()
+    compare(c, "'A'", 1)
 
 
 @suite.case("'Z' is alphabetic")
 def test_uppercase_end(c):
-    c.ft_isalpha("'Z'").equals(1).assert_now()
+    compare(c, "'Z'", 1)
 
 
 @suite.case("'a' is alphabetic")
 def test_lowercase_start(c):
-    c.ft_isalpha("'a'").equals(1).assert_now()
+    compare(c, "'a'", 1)
 
 
 @suite.case("'z' is alphabetic")
 def test_lowercase_end(c):
-    c.ft_isalpha("'z'").equals(1).assert_now()
+    compare(c, "'z'", 1)
 
 
 @suite.case("'[' is not alphabetic")
 def test_after_uppercase(c):
-    c.ft_isalpha("'['").equals(0).assert_now()
+    compare(c, "'['", 0)
 
 
 @suite.case("'`' is not alphabetic")
 def test_before_lowercase(c):
-    c.ft_isalpha("'`'").equals(0).assert_now()
+    compare(c, "'`'", 0)
 
 
 @suite.case("'{' is not alphabetic")
 def test_after_lowercase(c):
-    c.ft_isalpha("'{'").equals(0).assert_now()
+    compare(c, "'{'", 0)
 
 
 @suite.case("'0' is not alphabetic")
 def test_digit(c):
-    c.ft_isalpha("'0'").equals(0).assert_now()
+    compare(c, "'0'", 0)
 
 
 @suite.case("'9' is not alphabetic")
 def test_digit_end(c):
-    c.ft_isalpha("'9'").equals(0).assert_now()
+    compare(c, "'9'", 0)
 
 
 @suite.case("' ' is not alphabetic")
 def test_space(c):
-    c.ft_isalpha("' '").equals(0).assert_now()
+    compare(c, "' '", 0)
 
 
 @suite.case("'\\t' is not alphabetic")
 def test_tab(c):
-    c.ft_isalpha("'\\t'").equals(0).assert_now()
+    compare(c, "'\\t'", 0)
 
 
 @suite.case("'\\n' is not alphabetic")
 def test_newline(c):
-    c.ft_isalpha("'\\n'").equals(0).assert_now()
+    compare(c, "'\\n'", 0)
 
 
 @suite.case("'!' is not alphabetic")
 def test_punctuation(c):
-    c.ft_isalpha("'!'").equals(0).assert_now()
+    compare(c, "'!'", 0)
 
 
 @suite.case("'@' is not alphabetic")
 def test_symbol(c):
-    c.ft_isalpha("'@'").equals(0).assert_now()
+    compare(c, "'@'", 0)
 
 
 @suite.case("-1 is not alphabetic")
 def test_negative(c):
-    c.ft_isalpha("-1").equals(0).assert_now()
+    compare(c, "-1", 0)
 
 
 @suite.case("127 is not alphabetic")
 def test_del(c):
-    c.ft_isalpha("127").equals(0).assert_now()
+    compare(c, "127", 0)

@@ -3,66 +3,84 @@ from framework import TestSuite
 suite = TestSuite("ft_isascii")
 
 
+def compare(c, argument, expected):
+    ft = c.ft_isascii(argument)
+
+    libc = c.isascii(argument)
+    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
+    libc_value = int(bool(libc.return_type.parse(libc.value)))
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        f"Test with isascii({argument}) from libc",
+    ).assert_now()
+
+
 @suite.case("0 is ASCII")
 def test_lower_bound(c):
-    c.ft_isascii("0").equals(1).assert_now()
+    compare(c, "0", 1)
 
 
 @suite.case("127 is ASCII")
 def test_upper_bound(c):
-    c.ft_isascii("127").equals(1).assert_now()
+    compare(c, "127", 1)
 
 
 @suite.case("'A' is ASCII")
 def test_uppercase(c):
-    c.ft_isascii("'A'").equals(1).assert_now()
+    compare(c, "'A'", 1)
 
 
 @suite.case("'z' is ASCII")
 def test_lowercase(c):
-    c.ft_isascii("'z'").equals(1).assert_now()
+    compare(c, "'z'", 1)
 
 
 @suite.case("'0' is ASCII")
 def test_digit(c):
-    c.ft_isascii("'0'").equals(1).assert_now()
+    compare(c, "'0'", 1)
 
 
 @suite.case("' ' is ASCII")
 def test_space(c):
-    c.ft_isascii("' '").equals(1).assert_now()
+    compare(c, "' '", 1)
 
 
 @suite.case("'\\n' is ASCII")
 def test_newline(c):
-    c.ft_isascii("'\\n'").equals(1).assert_now()
+    compare(c, "'\\n'", 1)
 
 
 @suite.case("'\\t' is ASCII")
 def test_tab(c):
-    c.ft_isascii("'\\t'").equals(1).assert_now()
+    compare(c, "'\\t'", 1)
 
 
 @suite.case("'~' is ASCII")
 def test_tilde(c):
-    c.ft_isascii("'~'").equals(1).assert_now()
+    compare(c, "'~'", 1)
 
 
 @suite.case("-1 is not ASCII")
 def test_negative(c):
-    c.ft_isascii("-1").equals(0).assert_now()
+    compare(c, "-1", 0)
 
 
 @suite.case("128 is not ASCII")
 def test_128(c):
-    c.ft_isascii("128").equals(0).assert_now()
+    compare(c, "128", 0)
 
 
 @suite.case("255 is not ASCII")
 def test_255(c):
-    c.ft_isascii("255").equals(0).assert_now()
+    compare(c, "255", 0)
 
 
 @suite.case("256 is not ASCII")
 def test_256(c):
-    c.ft_isascii("256").equals(0).assert_now()
+    compare(c, "256", 0)

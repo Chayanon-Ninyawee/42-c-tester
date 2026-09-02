@@ -3,66 +3,84 @@ from framework import TestSuite
 suite = TestSuite("ft_isdigit")
 
 
+def compare(c, argument, expected):
+    ft = c.ft_isdigit(argument)
+
+    libc = c.isdigit(argument)
+    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
+    libc_value = int(bool(libc.return_type.parse(libc.value)))
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        f"Test with isdigit({argument}) from libc",
+    ).assert_now()
+
+
 @suite.case("'0' is a digit")
 def test_zero(c):
-    c.ft_isdigit("'0'").equals(1).assert_now()
+    compare(c, "'0'", 1)
 
 
 @suite.case("'9' is a digit")
 def test_nine(c):
-    c.ft_isdigit("'9'").equals(1).assert_now()
+    compare(c, "'9'", 1)
 
 
 @suite.case("'1' is a digit")
 def test_one(c):
-    c.ft_isdigit("'1'").equals(1).assert_now()
+    compare(c, "'1'", 1)
 
 
 @suite.case("'5' is a digit")
 def test_middle(c):
-    c.ft_isdigit("'5'").equals(1).assert_now()
+    compare(c, "'5'", 1)
 
 
 @suite.case("':' is not a digit")
 def test_after_digits(c):
-    c.ft_isdigit("':'").equals(0).assert_now()
+    compare(c, "':'", 0)
 
 
 @suite.case("'/' is not a digit")
 def test_before_digits(c):
-    c.ft_isdigit("'/'").equals(0).assert_now()
+    compare(c, "'/'", 0)
 
 
 @suite.case("'A' is not a digit")
 def test_uppercase(c):
-    c.ft_isdigit("'A'").equals(0).assert_now()
+    compare(c, "'A'", 0)
 
 
 @suite.case("'a' is not a digit")
 def test_lowercase(c):
-    c.ft_isdigit("'a'").equals(0).assert_now()
+    compare(c, "'a'", 0)
 
 
 @suite.case("' ' is not a digit")
 def test_space(c):
-    c.ft_isdigit("' '").equals(0).assert_now()
+    compare(c, "' '", 0)
 
 
 @suite.case("'!' is not a digit")
 def test_punctuation(c):
-    c.ft_isdigit("'!'").equals(0).assert_now()
+    compare(c, "'!'", 0)
 
 
 @suite.case("-1 is not a digit")
 def test_negative(c):
-    c.ft_isdigit("-1").equals(0).assert_now()
+    compare(c, "-1", 0)
 
 
 @suite.case("127 is not a digit")
 def test_127(c):
-    c.ft_isdigit("127").equals(0).assert_now()
+    compare(c, "127", 0)
 
 
 @suite.case("128 is not a digit")
 def test_128(c):
-    c.ft_isdigit("128").equals(0).assert_now()
+    compare(c, "128", 0)

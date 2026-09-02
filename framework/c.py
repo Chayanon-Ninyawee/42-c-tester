@@ -2,11 +2,10 @@ import selectors
 import subprocess
 import tempfile
 import textwrap
-from dataclasses import dataclass
 from pathlib import Path
 
 from .color import Color, color
-from .ctype import CType, PointerType, VoidType, parse_ctype
+from .ctype import CType, parse_ctype
 from .project import FunctionConfig
 from .result import AssertionFailure
 
@@ -135,12 +134,19 @@ class CFunction:
         name: str,
         returns: str = "int",
         args: list[str] | None = None,
+        headers: list[str] | None = None,
+        link: list[str] | None = None,
+        err_flags: bool = True,
     ):
         self.context = context
         self.name = name
 
         self.return_type = parse_ctype(returns)
         self.arg_types = [parse_ctype(arg) for arg in (args or [])]
+
+        self.headers = headers or []
+        self.link = link or []
+        self.err_flags = err_flags
 
     def __call__(self, *arguments: str):
         return self.context.call(
@@ -170,7 +176,7 @@ class CCallResult:
 
         self.failures: list[str] = []
 
-    def equals(self, expected):
+    def equals(self, expected, message: str | None = None):
         if isinstance(expected, bytes):
             raise TypeError(
                 "equals() cannot compare bytes; " "use buffer_equals() instead"
@@ -179,9 +185,30 @@ class CCallResult:
         actual = self.return_type.parse(self.value)
 
         if actual != expected:
+            prefix = f"{message}: " if message else ""
+
             self.failures.append(
-                f"return value mismatch\n"
+                f"{prefix}return value mismatch\n"
                 f"  expected: {expected!r}\n"
+                f"  received: {actual!r}"
+            )
+
+        return self
+
+    def not_equal(self, expected, message: str | None = None):
+        if isinstance(expected, bytes):
+            raise TypeError(
+                "not_equal() cannot compare bytes; " "use buffer_equals() instead"
+            )
+
+        actual = self.return_type.parse(self.value)
+
+        if actual == expected:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}unexpected return value\n"
+                f"  expected anything except: {expected!r}\n"
                 f"  received: {actual!r}"
             )
 
@@ -191,6 +218,7 @@ class CCallResult:
         self,
         buffer: CBuffer,
         expected: bytes,
+        message: str | None = None,
     ):
         if buffer.name not in self.buffers:
             raise RuntimeError(f"buffer '{buffer.name}' was not captured")
@@ -198,43 +226,53 @@ class CCallResult:
         actual = self.buffers[buffer.name]
 
         if actual != expected:
+            prefix = f"{message}: " if message else ""
+
             self.failures.append(
-                f"buffer '{buffer.name}' mismatch\n"
+                f"{prefix}buffer '{buffer.name}' mismatch\n"
                 f"  expected: {expected!r}\n"
                 f"  received: {actual!r}"
             )
 
         return self
 
-    def equals_string(self, expected: str):
+    def equals_string(self, expected: str, message: str | None = None):
         if self.value != expected:
+            prefix = f"{message}: " if message else ""
+
             self.failures.append(
-                f"string mismatch\n"
+                f"{prefix}string mismatch\n"
                 f"  expected: {expected!r}\n"
                 f"  received: {self.value!r}"
             )
 
         return self
 
-    def is_null(self):
+    def is_null(self, message: str | None = None):
         if self.value != "NULL":
-            self.failures.append(f"expected NULL\n" f"  received: {self.value!r}")
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}expected NULL\n" f"  received: {self.value!r}"
+            )
 
         return self
 
-    def is_not_null(self):
+    def is_not_null(self, message: str | None = None):
         if self.value == "NULL":
-            self.failures.append("expected non-NULL pointer")
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(f"{prefix}expected non-NULL pointer")
 
         return self
 
-    def returned_pointer_is(self, buffer):
+    def returned_pointer_is(self, buffer, message: str | None = None):
         if isinstance(buffer, CBufferOffset):
             base = self.pointer_values.get(buffer.buffer.name)
 
             if base is None:
                 raise RuntimeError(
-                    f"buffer '{buffer.buffer.name}' pointer was not captured"
+                    f"buffer '{buffer.buffer.name}' pointer " f"was not captured"
                 )
 
             expected = hex(int(base, 16) + buffer.offset)
@@ -242,11 +280,15 @@ class CCallResult:
             expected = self.pointer_values.get(buffer.name)
 
             if expected is None:
-                raise RuntimeError(f"buffer '{buffer.name}' pointer was not captured")
+                raise RuntimeError(
+                    f"buffer '{buffer.name}' pointer " f"was not captured"
+                )
 
         if self.value != expected:
+            prefix = f"{message}: " if message else ""
+
             self.failures.append(
-                f"returned pointer mismatch\n"
+                f"{prefix}returned pointer mismatch\n"
                 f"  expected: {expected}\n"
                 f"  received: {self.value}"
             )
@@ -282,18 +324,27 @@ class CContext:
         if name in self._functions:
             return self._functions[name]
 
+        headers = []
+        link = []
+        err_flags = True
         if self.config is not None:
             definition = self.config.functions.get(name)
 
             if definition is not None:
                 returns = definition.returns
                 args = definition.args
+                headers = definition.headers
+                link = definition.link
+                err_flags = definition.err_flags
 
         function = CFunction(
             context=self,
             name=name,
             returns=returns,
             args=args,
+            headers=headers,
+            link=link,
+            err_flags=err_flags,
         )
 
         self._functions[name] = function
@@ -398,8 +449,10 @@ class CContext:
                 "cc",
                 "-Wall",
                 "-Wextra",
-                "-Werror",
             ]
+
+            if function.err_flags:
+                command.append("-Werror")
 
             for include in self.config.includes:
                 command.extend(
@@ -415,6 +468,9 @@ class CContext:
 
             for link in self.config.link:
                 command.append(str(self.project_dir / link))
+
+            for link in function.link:
+                command.append(f"-l{link}")
 
             command.extend(
                 [
@@ -562,12 +618,19 @@ def generate_harness(
 
     output = function.return_type.serialize("result")
 
+    headers = "\n".join(f"#include <{header}>" for header in function.headers)
+
+    declaration = ""
+
+    if not function.headers:
+        declaration = f"""extern {function.return_type.declaration} {function.name}(
+    {argument_types}
+);"""
+
     return f"""
 #include <stdio.h>
-
-extern {function.return_type.declaration} {function.name}(
-    {argument_types}
-);
+{headers}
+{declaration}
 
 int main(void)
 {{

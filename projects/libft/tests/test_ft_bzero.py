@@ -3,97 +3,87 @@ from framework import TestSuite
 suite = TestSuite("ft_bzero")
 
 
+def compare(c, original, expected, count):
+    ft_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="ft",
+    )
+
+    libc_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="libc",
+    )
+
+    ft = c.ft_bzero(
+        ft_buffer,
+        count,
+    )
+
+    libc = c.bzero(
+        libc_buffer,
+        count,
+    )
+
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    )
+    ft.assert_now()
+
+    libc.buffer_equals(
+        libc_buffer,
+        expected,
+        "Test buffer contents from memset() from libc",
+    )
+    libc.assert_now()
+
+
 @suite.case("zeros entire buffer")
 def test_all_bytes(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"\x00\x00\x00\x00\x00"
 
-    result = c.ft_bzero(
-        buffer,
-        "5",
-    )
-
-    result.buffer_equals(buffer, b"\x00\x00\x00\x00\x00")
-    result.assert_now()
+    compare(c, original, expected, "5")
 
 
 @suite.case("zeros first 3 bytes")
 def test_partial(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"\x00\x00\x00lo"
 
-    result = c.ft_bzero(
-        buffer,
-        "3",
-    )
-
-    result.buffer_equals(buffer, b"\x00\x00\x00lo")
-    result.assert_now()
+    compare(c, original, expected, "3")
 
 
 @suite.case("zeros first byte")
 def test_one_byte(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"\x00ello"
 
-    result = c.ft_bzero(
-        buffer,
-        "1",
-    )
-
-    result.buffer_equals(buffer, b"\x00ello")
-    result.assert_now()
+    compare(c, original, expected, "1")
 
 
 @suite.case("zero bytes does nothing")
 def test_zero(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"hello"
 
-    result = c.ft_bzero(
-        buffer,
-        "0",
-    )
-
-    result.buffer_equals(buffer, b"hello")
-    result.assert_now()
+    compare(c, original, expected, "0")
 
 
 @suite.case("works with binary data")
 def test_binary(c):
-    buffer = c.buffer(
-        b"\xff\x01\x00\x80\x7f",
-        size=5,
-    )
+    original = b"\xff\x01\x00\x80\x7f"
+    expected = b"\x00\x00\x00\x80\x7f"
 
-    result = c.ft_bzero(
-        buffer,
-        "3",
-    )
-
-    result.buffer_equals(buffer, b"\x00\x00\x00\x80\x7f")
-    result.assert_now()
+    compare(c, original, expected, "3")
 
 
 @suite.case("preserves bytes after n")
 def test_boundary(c):
-    buffer = c.buffer(
-        b"abcdefghij",
-        size=10,
-    )
+    original = b"abcdefghij"
+    expected = b"\x00\x00\x00\x00efghij"
 
-    result = c.ft_bzero(
-        buffer,
-        "4",
-    )
-
-    result.buffer_equals(buffer, b"\x00\x00\x00\x00efghij")
-    result.assert_now()
+    compare(c, original, expected, "4")

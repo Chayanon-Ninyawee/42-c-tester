@@ -3,81 +3,99 @@ from framework import TestSuite
 suite = TestSuite("ft_isprint")
 
 
+def compare(c, argument, expected):
+    ft = c.ft_isprint(argument)
+
+    libc = c.isprint(argument)
+    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
+    libc_value = int(bool(libc.return_type.parse(libc.value)))
+
+    ft.equals(
+        expected,
+        "Test with value",
+    )
+
+    ft.equals(
+        libc_value,
+        f"Test with isprint({argument}) from libc",
+    ).assert_now()
+
+
 @suite.case("32 is printable")
 def test_lower_bound(c):
-    c.ft_isprint("32").equals(1).assert_now()
+    compare(c, "32", 1)
 
 
 @suite.case("126 is printable")
 def test_upper_bound(c):
-    c.ft_isprint("126").equals(1).assert_now()
+    compare(c, "126", 1)
 
 
 @suite.case("' ' is printable")
 def test_space(c):
-    c.ft_isprint("' '").equals(1).assert_now()
+    compare(c, "' '", 1)
 
 
 @suite.case("'!' is printable")
 def test_exclamation(c):
-    c.ft_isprint("'!'").equals(1).assert_now()
+    compare(c, "'!'", 1)
 
 
 @suite.case("'A' is printable")
 def test_uppercase(c):
-    c.ft_isprint("'A'").equals(1).assert_now()
+    compare(c, "'A'", 1)
 
 
 @suite.case("'z' is printable")
 def test_lowercase(c):
-    c.ft_isprint("'z'").equals(1).assert_now()
+    compare(c, "'z'", 1)
 
 
 @suite.case("'0' is printable")
 def test_digit(c):
-    c.ft_isprint("'0'").equals(1).assert_now()
+    compare(c, "'0'", 1)
 
 
 @suite.case("'~' is printable")
 def test_tilde(c):
-    c.ft_isprint("'~'").equals(1).assert_now()
+    compare(c, "'~'", 1)
 
 
 @suite.case("31 is not printable")
 def test_before_lower_bound(c):
-    c.ft_isprint("31").equals(0).assert_now()
+    compare(c, "31", 0)
 
 
 @suite.case("127 is not printable")
 def test_after_upper_bound(c):
-    c.ft_isprint("127").equals(0).assert_now()
+    compare(c, "127", 0)
 
 
 @suite.case("0 is not printable")
 def test_null(c):
-    c.ft_isprint("0").equals(0).assert_now()
+    compare(c, "0", 0)
 
 
 @suite.case("'\\n' is not printable")
 def test_newline(c):
-    c.ft_isprint("'\\n'").equals(0).assert_now()
+    compare(c, "'\\n'", 0)
 
 
 @suite.case("'\\t' is not printable")
 def test_tab(c):
-    c.ft_isprint("'\\t'").equals(0).assert_now()
+    compare(c, "'\\t'", 0)
 
 
 @suite.case("-1 is not printable")
 def test_negative(c):
-    c.ft_isprint("-1").equals(0).assert_now()
+    compare(c, "-1", 0)
 
 
 @suite.case("128 is not printable")
 def test_128(c):
-    c.ft_isprint("128").equals(0).assert_now()
+    compare(c, "128", 0)
 
 
 @suite.case("255 is not printable")
 def test_255(c):
-    c.ft_isprint("255").equals(0).assert_now()
+    compare(c, "255", 0)

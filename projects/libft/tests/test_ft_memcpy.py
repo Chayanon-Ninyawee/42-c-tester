@@ -3,176 +3,132 @@ from framework import TestSuite
 suite = TestSuite("ft_memcpy")
 
 
+def compare(c, dest_original, src_original, expected, count):
+    ft_dest = c.buffer(
+        dest_original,
+        size=len(dest_original),
+        name="ft_dest",
+    )
+    ft_src = c.buffer(
+        src_original,
+        size=len(src_original),
+        name="ft_src",
+    )
+
+    libc_dest = c.buffer(
+        dest_original,
+        size=len(dest_original),
+        name="libc_dest",
+    )
+    libc_src = c.buffer(
+        src_original,
+        size=len(src_original),
+        name="libc_src",
+    )
+
+    ft = c.ft_memcpy(
+        ft_dest,
+        ft_src,
+        count,
+    )
+
+    libc = c.memcpy(
+        libc_dest,
+        libc_src,
+        count,
+    )
+
+    ft.returned_pointer_is(
+        ft_dest,
+        "Test returned pointer",
+    )
+    ft.buffer_equals(
+        ft_dest,
+        expected,
+        "Test destination buffer",
+    )
+    ft.buffer_equals(
+        ft_src,
+        src_original,
+        "Test source buffer was not modified",
+    )
+    ft.assert_now()
+
+    libc.returned_pointer_is(
+        libc_dest,
+        "Test returned pointer from memcpy() from libc",
+    )
+    libc.buffer_equals(
+        libc_dest,
+        expected,
+        "Test destination buffer from memcpy() from libc",
+    )
+    libc.buffer_equals(
+        libc_src,
+        src_original,
+        "Test source buffer was not modified by memcpy() from libc",
+    )
+    libc.assert_now()
+
+
 @suite.case("copies entire buffer")
 def test_all_bytes(c):
-    dest = c.buffer(
-        b"XXXXXXXXXX",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"hello12345",
-        size=10,
-        name="src",
-    )
+    dest_original = b"XXXXXXXXXX"
+    src_original = b"hello12345"
+    expected = b"hello12345"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "10",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"hello12345")
-    result.buffer_equals(src, b"hello12345")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "10")
 
 
 @suite.case("copies first 5 bytes")
 def test_partial(c):
-    dest = c.buffer(
-        b"XXXXXXXXXX",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"hello12345",
-        size=10,
-        name="src",
-    )
+    dest_original = b"XXXXXXXXXX"
+    src_original = b"hello12345"
+    expected = b"helloXXXXX"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "5",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"helloXXXXX")
-    result.buffer_equals(src, b"hello12345")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "5")
 
 
 @suite.case("copies one byte")
 def test_one_byte(c):
-    dest = c.buffer(
-        b"XXXXXXXXXX",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"hello12345",
-        size=10,
-        name="src",
-    )
+    dest_original = b"XXXXXXXXXX"
+    src_original = b"hello12345"
+    expected = b"hXXXXXXXXX"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "1",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"hXXXXXXXXX")
-    result.buffer_equals(src, b"hello12345")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "1")
 
 
 @suite.case("zero bytes does nothing")
 def test_zero(c):
-    dest = c.buffer(
-        b"XXXXXXXXXX",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"hello12345",
-        size=10,
-        name="src",
-    )
+    dest_original = b"XXXXXXXXXX"
+    src_original = b"hello12345"
+    expected = b"XXXXXXXXXX"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "0",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"XXXXXXXXXX")
-    result.buffer_equals(src, b"hello12345")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "0")
 
 
 @suite.case("works with binary data")
 def test_binary(c):
-    dest = c.buffer(
-        b"\x00\x00\x00\x00\x00",
-        size=5,
-        name="dest",
-    )
-    src = c.buffer(
-        b"\xff\x01\x80\x00\x7f",
-        size=5,
-        name="src",
-    )
+    dest_original = b"\x00\x00\x00\x00\x00"
+    src_original = b"\xff\x01\x80\x00\x7f"
+    expected = b"\xff\x01\x80\x00\x7f"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "5",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"\xff\x01\x80\x00\x7f")
-    result.buffer_equals(src, b"\xff\x01\x80\x00\x7f")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "5")
 
 
 @suite.case("preserves bytes after n")
 def test_boundary(c):
-    dest = c.buffer(
-        b"0123456789",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"abcdefghij",
-        size=10,
-        name="src",
-    )
+    dest_original = b"0123456789"
+    src_original = b"abcdefghij"
+    expected = b"abcd456789"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "4",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"abcd456789")
-    result.buffer_equals(src, b"abcdefghij")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "4")
 
 
 @suite.case("copies between independent buffers")
 def test_different_buffers(c):
-    dest = c.buffer(
-        b"abcdefghij",
-        size=10,
-        name="dest",
-    )
-    src = c.buffer(
-        b"1234567890",
-        size=10,
-        name="src",
-    )
+    dest_original = b"abcdefghij"
+    src_original = b"1234567890"
+    expected = b"1234567hij"
 
-    result = c.ft_memcpy(
-        dest,
-        src,
-        "7",
-    )
-
-    result.returned_pointer_is(dest)
-    result.buffer_equals(dest, b"1234567hij")
-    result.buffer_equals(src, b"1234567890")
-    result.assert_now()
+    compare(c, dest_original, src_original, expected, "7")

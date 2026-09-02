@@ -3,127 +3,109 @@ from framework import TestSuite
 suite = TestSuite("ft_memset")
 
 
+def compare(c, original, expected, value, count):
+    ft_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="ft",
+    )
+
+    libc_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="libc",
+    )
+
+    ft = c.ft_memset(
+        ft_buffer,
+        value,
+        count,
+    )
+
+    libc = c.memset(
+        libc_buffer,
+        value,
+        count,
+    )
+
+    ft.returned_pointer_is(
+        ft_buffer,
+        "Test returned pointer",
+    )
+
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    )
+
+    ft.assert_now()
+
+    libc.returned_pointer_is(
+        libc_buffer,
+        "Test returned pointer from memset() from libc",
+    )
+
+    libc.buffer_equals(
+        libc_buffer,
+        expected,
+        "Test buffer contents from memset() from libc",
+    )
+
+    libc.assert_now()
+
+
 @suite.case("sets all bytes")
 def test_all_bytes(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"XXXXX"
 
-    result = c.ft_memset(
-        buffer,
-        "'X'",
-        "5",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"XXXXX")
-    result.assert_now()
+    compare(c, original, expected, "'X'", "5")
 
 
 @suite.case("sets first 3 bytes")
 def test_partial(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"XXXlo"
 
-    result = c.ft_memset(
-        buffer,
-        "'X'",
-        "3",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"XXXlo")
-    result.assert_now()
+    compare(c, original, expected, "'X'", "3")
 
 
 @suite.case("sets first byte")
 def test_one_byte(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"Xello"
 
-    result = c.ft_memset(
-        buffer,
-        "'X'",
-        "1",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"Xello")
-    result.assert_now()
+    compare(c, original, expected, "'X'", "1")
 
 
 @suite.case("zero bytes does nothing")
 def test_zero(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"hello"
 
-    result = c.ft_memset(
-        buffer,
-        "'X'",
-        "0",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"hello")
-    result.assert_now()
+    compare(c, original, expected, "'X'", "0")
 
 
 @suite.case("can set zero bytes")
 def test_zero_value(c):
-    buffer = c.buffer(
-        b"hello",
-        size=5,
-    )
+    original = b"hello"
+    expected = b"\x00\x00\x00\x00\x00"
 
-    result = c.ft_memset(
-        buffer,
-        "0",
-        "5",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"\x00\x00\x00\x00\x00")
-    result.assert_now()
+    compare(c, original, expected, "0", "5")
 
 
 @suite.case("works with binary data")
 def test_binary(c):
-    buffer = c.buffer(
-        b"\x00\x01\x02\x03\x04",
-        size=5,
-    )
+    original = b"\x00\x01\x02\x03\x04"
+    expected = b"\xff\xff\xff\x03\x04"
 
-    result = c.ft_memset(
-        buffer,
-        "255",
-        "3",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"\xff\xff\xff\x03\x04")
-    result.assert_now()
+    compare(c, original, expected, "255", "3")
 
 
 @suite.case("preserves bytes after n")
 def test_boundary(c):
-    buffer = c.buffer(
-        b"abcdefghij",
-        size=10,
-    )
+    original = b"abcdefghij"
+    expected = b"ZZZZefghij"
 
-    result = c.ft_memset(
-        buffer,
-        "'Z'",
-        "4",
-    )
-
-    result.returned_pointer_is(buffer)
-    result.buffer_equals(buffer, b"ZZZZefghij")
-    result.assert_now()
+    compare(c, original, expected, "'Z'", "4")
