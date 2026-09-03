@@ -181,6 +181,26 @@ project = Project(
                 args=["const char *", "const char *", "size_t"],
                 headers=["string.h"],
             ),
+            # memchr
+            "ft_memchr": FunctionDefinition(
+                returns="void *",
+                args=["const void *", "int", "size_t"],
+            ),
+            "memchr": FunctionDefinition(
+                returns="void *",
+                args=["const void *", "int", "size_t"],
+                headers=["string.h"],
+            ),
+            # memcmp
+            "ft_memcmp": FunctionDefinition(
+                returns="int",
+                args=["const void *", "const void *", "size_t"],
+            ),
+            "memcmp": FunctionDefinition(
+                returns="int",
+                args=["const void *", "const void *", "size_t"],
+                headers=["string.h"],
+            ),
         },
         link=[
             "libft.a",
@@ -208,5 +228,7 @@ project = Project(
         "ft_strchr",
         "ft_strrchr",
         "ft_strncmp",
+        "ft_memchr",
+        "ft_memcmp",
     ],
 )
