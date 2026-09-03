@@ -131,6 +131,56 @@ project = Project(
                 headers=["bsd/string.h"],
                 link=["bsd"],
             ),
+            # toupper
+            "ft_toupper": FunctionDefinition(
+                returns="int",
+                args=["int"],
+            ),
+            "toupper": FunctionDefinition(
+                returns="int",
+                args=["int"],
+                headers=["ctype.h"],
+            ),
+            # tolower
+            "ft_tolower": FunctionDefinition(
+                returns="int",
+                args=["int"],
+            ),
+            "tolower": FunctionDefinition(
+                returns="int",
+                args=["int"],
+                headers=["ctype.h"],
+            ),
+            # strchr
+            "ft_strchr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "int"],
+            ),
+            "strchr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "int"],
+                headers=["string.h"],
+            ),
+            # strrchr
+            "ft_strrchr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "int"],
+            ),
+            "strrchr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "int"],
+                headers=["string.h"],
+            ),
+            # strncmp
+            "ft_strncmp": FunctionDefinition(
+                returns="int",
+                args=["const char *", "const char *", "size_t"],
+            ),
+            "strncmp": FunctionDefinition(
+                returns="int",
+                args=["const char *", "const char *", "size_t"],
+                headers=["string.h"],
+            ),
         },
         link=[
             "libft.a",
@@ -152,5 +202,11 @@ project = Project(
         "ft_memmove",
         "ft_strlcpy",
         "ft_strlcat",
+        "ft_toupper",
+        "ft_tolower",
+        "ft_tolower",
+        "ft_strchr",
+        "ft_strrchr",
+        "ft_strncmp",
     ],
 )
