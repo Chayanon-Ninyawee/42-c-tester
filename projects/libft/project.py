@@ -109,6 +109,28 @@ project = Project(
                 args=["void *", "const void *", "size_t"],
                 headers=["string.h"],
             ),
+            # strlcpy
+            "ft_strlcpy": FunctionDefinition(
+                returns="size_t",
+                args=["char *", "const char *", "size_t"],
+            ),
+            "strlcpy": FunctionDefinition(
+                returns="size_t",
+                args=["char *", "const char *", "size_t"],
+                headers=["bsd/string.h"],
+                link=["bsd"],
+            ),
+            # strlcat
+            "ft_strlcat": FunctionDefinition(
+                returns="size_t",
+                args=["char *", "const char *", "size_t"],
+            ),
+            "strlcat": FunctionDefinition(
+                returns="size_t",
+                args=["char *", "const char *", "size_t"],
+                headers=["bsd/string.h"],
+                link=["bsd"],
+            ),
         },
         link=[
             "libft.a",
@@ -128,5 +150,7 @@ project = Project(
         "ft_bzero",
         "ft_memcpy",
         "ft_memmove",
+        "ft_strlcpy",
+        "ft_strlcat",
     ],
 )
