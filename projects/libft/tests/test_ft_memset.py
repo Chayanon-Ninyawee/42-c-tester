@@ -28,31 +28,25 @@ def compare(c, original, expected, value, count):
         count,
     )
 
-    ft.returned_pointer_is(
-        ft_buffer,
-        "Test returned pointer",
-    )
-
-    ft.buffer_equals(
-        ft_buffer,
-        expected,
-        "Test buffer contents",
-    )
-
-    ft.assert_now()
-
     libc.returned_pointer_is(
         libc_buffer,
         "Test returned pointer from memset() from libc",
     )
-
     libc.buffer_equals(
         libc_buffer,
         expected,
         "Test buffer contents from memset() from libc",
-    )
+    ).assert_reference()
 
-    libc.assert_now()
+    ft.returned_pointer_is(
+        ft_buffer,
+        "Test returned pointer",
+    )
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    ).assert_now()
 
 
 @suite.case("sets all bytes")

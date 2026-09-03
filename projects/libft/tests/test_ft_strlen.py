@@ -19,34 +19,27 @@ def compare(c, original, expected):
     )
 
     ft = c.ft_strlen(ft_buffer)
-
     libc = c.strlen(libc_buffer)
-    libc_value = libc.return_type.parse(libc.value)
+
+    libc.equals(
+        expected,
+        "Test with strlen() from libc",
+    )
+    libc.buffer_equals(
+        libc_buffer,
+        original,
+        "Input buffer was modified by libc",
+    ).assert_reference()
 
     ft.equals(
         expected,
         "Test with value",
     )
-
-    ft.equals(
-        libc_value,
-        "Test with strlen() from libc",
-    )
-
     ft.buffer_equals(
         ft_buffer,
         original,
         "Input buffer was modified",
-    )
-
-    libc.buffer_equals(
-        libc_buffer,
-        original,
-        "Input buffer was modified by libc",
-    )
-
-    ft.assert_now()
-    libc.assert_now()
+    ).assert_now()
 
 
 @suite.case("empty string has length 0")

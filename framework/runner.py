@@ -4,7 +4,13 @@ from pathlib import Path
 from .builder import BuildError, create_builder
 from .c import CContext
 from .color import Color, color
-from .result import AssertionFailure, TestResult, TestResults, TestStatus
+from .result import (
+    AssertionFailure,
+    TestResult,
+    TestResults,
+    TestStatus,
+    UnexpectedResult,
+)
 
 
 class TestSuite:
@@ -60,6 +66,20 @@ class TestSuite:
                     TestResult(
                         name=name,
                         status=TestStatus.FAIL,
+                        message=str(error),
+                    )
+                )
+
+            except UnexpectedResult as error:
+                print(f"  {color('[UNEXPECTED]', Color.YELLOW)} " f"{name}")
+
+                for line in str(error).splitlines():
+                    print(f"         {color(line, Color.YELLOW)}")
+
+                results.add(
+                    TestResult(
+                        name=name,
+                        status=TestStatus.UNEXPECTED,
                         message=str(error),
                     )
                 )
@@ -267,6 +287,8 @@ def run_project(
     print(f"{color('Passed:', Color.GREEN)} " f"{results.passed}")
 
     print(f"{color('Failed:', Color.RED)} " f"{results.failed}")
+
+    print(f"{color('Unexpected:', Color.YELLOW)} " f"{results.unexpected}")
 
     print(f"{color('Errors:', Color.MAGENTA)} " f"{results.errors}")
 

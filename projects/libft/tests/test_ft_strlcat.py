@@ -10,7 +10,6 @@ def compare(c, dest_original, src_original, size, expected, return_expected):
         type="char",
         name="ft_dest",
     )
-
     ft_src = c.buffer(
         src_original,
         size=len(src_original),
@@ -24,7 +23,6 @@ def compare(c, dest_original, src_original, size, expected, return_expected):
         type="char",
         name="libc_dest",
     )
-
     libc_src = c.buffer(
         src_original,
         size=len(src_original),
@@ -44,43 +42,35 @@ def compare(c, dest_original, src_original, size, expected, return_expected):
         size,
     )
 
-    ft.equals(
-        return_expected,
-        "Test with return value",
-    )
-
-    ft.buffer_equals(
-        ft_dest,
-        expected,
-        "Test destination buffer",
-    )
-
-    ft.buffer_equals(
-        ft_src,
-        src_original,
-        "Test source buffer was not modified",
-    )
-
-    ft.assert_now()
-
     libc.equals(
         return_expected,
         "Test with return value from strlcat() from libc",
     )
-
     libc.buffer_equals(
         libc_dest,
         expected,
         "Test destination buffer from strlcat() from libc",
     )
-
     libc.buffer_equals(
         libc_src,
         src_original,
-        "Test source buffer was not modified by strlcat() from libc",
-    )
+        "Test that source buffer was not modified by strlcat() from libc",
+    ).assert_reference()
 
-    libc.assert_now()
+    ft.equals(
+        return_expected,
+        "Test with return value",
+    )
+    ft.buffer_equals(
+        ft_dest,
+        expected,
+        "Test destination buffer",
+    )
+    ft.buffer_equals(
+        ft_src,
+        src_original,
+        "Test that source buffer was not modified",
+    ).assert_now()
 
 
 @suite.case("empty destination")

@@ -42,45 +42,35 @@ def compare(c, dest_original, src_original, expected, expected_return, size):
         size,
     )
 
-    libc_value = libc.return_type.parse(libc.value)
-
-    ft.equals(
+    libc.equals(
         expected_return,
-        "Test with value",
-    )
-
-    ft.equals(
-        libc_value,
         "Test with strlcpy() from libc",
     )
-
-    ft.buffer_equals(
-        ft_dest,
-        expected,
-        "Test destination buffer",
-    )
-
-    ft.buffer_equals(
-        ft_src,
-        src_original,
-        "Test source buffer was not modified",
-    )
-
-    ft.assert_now()
-
     libc.buffer_equals(
         libc_dest,
         expected,
         "Test destination buffer from strlcpy() from libc",
     )
-
     libc.buffer_equals(
         libc_src,
         src_original,
-        "Test source buffer was not modified by strlcpy() from libc",
-    )
+        "Test that source buffer was not modified by strlcpy() from libc",
+    ).assert_reference()
 
-    libc.assert_now()
+    ft.equals(
+        expected_return,
+        "Test with value",
+    )
+    ft.buffer_equals(
+        ft_dest,
+        expected,
+        "Test destination buffer",
+    )
+    ft.buffer_equals(
+        ft_src,
+        src_original,
+        "Test that source buffer was not modified",
+    ).assert_now()
 
 
 @suite.case("copies entire string")

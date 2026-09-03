@@ -10,14 +10,15 @@ def compare(c, argument, expected):
     # NOTE: this is because some libc implementation will return other non-zero int instead of 1
     libc_value = int(bool(libc.return_type.parse(libc.value)))
 
+    libc.value_equals(
+        libc_value,
+        expected,
+        "Test with isprint() from libc",
+    ).assert_reference()
+
     ft.equals(
         expected,
         "Test with value",
-    )
-
-    ft.equals(
-        libc_value,
-        f"Test with isprint({argument}) from libc",
     ).assert_now()
 
 

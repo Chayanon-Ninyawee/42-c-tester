@@ -5,10 +5,15 @@ from enum import Enum
 class TestStatus(Enum):
     PASS = "PASS"
     FAIL = "FAIL"
+    UNEXPECTED = "UNEXPECTED"
     ERROR = "ERROR"
 
 
 class AssertionFailure(Exception):
+    pass
+
+
+class UnexpectedResult(Exception):
     pass
 
 
@@ -35,6 +40,10 @@ class TestResults:
         return sum(r.status == TestStatus.FAIL for r in self.results)
 
     @property
+    def unexpected(self):
+        return sum(r.status == TestStatus.UNEXPECTED for r in self.results)
+
+    @property
     def errors(self):
         return sum(r.status == TestStatus.ERROR for r in self.results)
 
@@ -47,6 +56,7 @@ class TestResults:
         print("────────────────────────────────────")
         print(f"Passed: {self.passed}")
         print(f"Failed: {self.failed}")
+        print(f"Unexpected: {self.unexpected}")
         print(f"Errors: {self.errors}")
         print(f"Total:  {self.total}")
         print("────────────────────────────────────")

@@ -38,22 +38,6 @@ def compare(c, dest_original, src_original, expected, count):
         count,
     )
 
-    ft.returned_pointer_is(
-        ft_dest,
-        "Test returned pointer",
-    )
-    ft.buffer_equals(
-        ft_dest,
-        expected,
-        "Test destination buffer",
-    )
-    ft.buffer_equals(
-        ft_src,
-        src_original,
-        "Test source buffer was not modified",
-    )
-    ft.assert_now()
-
     libc.returned_pointer_is(
         libc_dest,
         "Test returned pointer from memmove() from libc",
@@ -66,9 +50,23 @@ def compare(c, dest_original, src_original, expected, count):
     libc.buffer_equals(
         libc_src,
         src_original,
-        "Test source buffer was not modified by memmove() from libc",
+        "Test that source buffer was not modified by memmove() from libc",
+    ).assert_reference()
+
+    ft.returned_pointer_is(
+        ft_dest,
+        "Test returned pointer",
     )
-    libc.assert_now()
+    ft.buffer_equals(
+        ft_dest,
+        expected,
+        "Test destination buffer",
+    )
+    ft.buffer_equals(
+        ft_src,
+        src_original,
+        "Test that source buffer was not modified",
+    ).assert_now()
 
 
 @suite.case("copies entire buffer")
@@ -165,17 +163,6 @@ def test_overlap_forward(c):
         "7",
     )
 
-    ft.returned_pointer_is(
-        ft_buffer.offset(2),
-        "Test returned pointer",
-    )
-    ft.buffer_equals(
-        ft_buffer,
-        expected,
-        "Test buffer contents",
-    )
-    ft.assert_now()
-
     libc.returned_pointer_is(
         libc_buffer.offset(2),
         "Test returned pointer from memmove() from libc",
@@ -184,8 +171,17 @@ def test_overlap_forward(c):
         libc_buffer,
         expected,
         "Test buffer contents from memmove() from libc",
+    ).assert_reference()
+
+    ft.returned_pointer_is(
+        ft_buffer.offset(2),
+        "Test returned pointer",
     )
-    libc.assert_now()
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    ).assert_now()
 
 
 @suite.case("handles overlapping buffers backward")
@@ -219,6 +215,16 @@ def test_overlap_backward(c):
         "7",
     )
 
+    libc.returned_pointer_is(
+        libc_buffer,
+        "Test returned pointer from memmove() from libc",
+    )
+    libc.buffer_equals(
+        libc_buffer,
+        expected,
+        "Test buffer contents from memmove() from libc",
+    ).assert_reference()
+
     ft.returned_pointer_is(
         ft_buffer,
         "Test returned pointer",
@@ -227,8 +233,121 @@ def test_overlap_backward(c):
         ft_buffer,
         expected,
         "Test buffer contents",
+    ).assert_now()
+
+
+@suite.case("handles large overlapping buffers forward")
+def test_large_overlap_forward(c):
+    pattern = (
+        b"0123456789"
+        b"abcdefghij"
+        b"KLMNOPQRST"
+        b"uvwxyzABCD"
+        b"EFGHIJKLMN"
+        b"OPQRSTUVWX"
+        b"YZ01234567"
+        b"89!@#$%^&*"
+        b"()_+-=[]{}"
+        b"<>?/.,:;"
     )
-    ft.assert_now()
+
+    # the pattern size is 98
+    original = pattern * 20
+    offset = 200
+    count = 1600
+
+    expected = original[:offset] + original[:count] + original[offset + count :]
+
+    ft_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="ft",
+    )
+
+    libc_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="libc",
+    )
+
+    ft = c.ft_memmove(
+        ft_buffer.offset(offset),
+        ft_buffer,
+        str(count),
+    )
+
+    libc = c.memmove(
+        libc_buffer.offset(offset),
+        libc_buffer,
+        str(count),
+    )
+
+    libc.returned_pointer_is(
+        libc_buffer.offset(offset),
+        "Test returned pointer from memmove() from libc",
+    )
+    libc.buffer_equals(
+        libc_buffer,
+        expected,
+        "Test buffer contents from memmove() from libc",
+    ).assert_reference()
+
+    ft.returned_pointer_is(
+        ft_buffer.offset(offset),
+        "Test returned pointer",
+    )
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    ).assert_now()
+
+
+@suite.case("handles large overlapping buffers backward")
+def test_large_overlap_backward(c):
+    pattern = (
+        b"0123456789"
+        b"abcdefghij"
+        b"KLMNOPQRST"
+        b"uvwxyzABCD"
+        b"EFGHIJKLMN"
+        b"OPQRSTUVWX"
+        b"YZ01234567"
+        b"89!@#$%^&*"
+        b"()_+-=[]{}"
+        b"<>?/.,:;"
+    )
+
+    # the pattern size is 98
+    original = pattern * 20
+    offset = 200
+    count = 1600
+
+    expected = original[offset : offset + count] + original[count:]
+
+    ft_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="ft",
+    )
+
+    libc_buffer = c.buffer(
+        original,
+        size=len(original),
+        name="libc",
+    )
+
+    ft = c.ft_memmove(
+        ft_buffer,
+        ft_buffer.offset(offset),
+        str(count),
+    )
+
+    libc = c.memmove(
+        libc_buffer,
+        libc_buffer.offset(offset),
+        str(count),
+    )
 
     libc.returned_pointer_is(
         libc_buffer,
@@ -238,5 +357,14 @@ def test_overlap_backward(c):
         libc_buffer,
         expected,
         "Test buffer contents from memmove() from libc",
+    ).assert_reference()
+
+    ft.returned_pointer_is(
+        ft_buffer,
+        "Test returned pointer",
     )
-    libc.assert_now()
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    ).assert_now()

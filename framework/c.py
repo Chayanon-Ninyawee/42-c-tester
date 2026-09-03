@@ -7,7 +7,7 @@ from pathlib import Path
 from .color import Color, color
 from .ctype import CType, parse_ctype
 from .project import FunctionConfig
-from .result import AssertionFailure
+from .result import AssertionFailure, UnexpectedResult
 
 
 def run_debug_process(command, cwd):
@@ -295,10 +295,34 @@ class CCallResult:
 
         return self
 
+    # Generic equals like doesn't use the value from the function but a value that pass in
+    # (that value should be derived from the function value)
+    def value_equals(
+        self,
+        actual,
+        expected,
+        message: str | None = None,
+    ):
+        if actual != expected:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}value mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {actual!r}"
+            )
+
+        return self
+
     def assert_now(self):
         if self.failures:
             raise AssertionFailure("\n\n".join(self.failures))
 
+        return self
+
+    def assert_reference(self):
+        if self.failures:
+            raise UnexpectedResult("\n\n".join(self.failures))
         return self
 
 

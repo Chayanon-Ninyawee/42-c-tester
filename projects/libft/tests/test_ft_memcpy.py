@@ -38,22 +38,6 @@ def compare(c, dest_original, src_original, expected, count):
         count,
     )
 
-    ft.returned_pointer_is(
-        ft_dest,
-        "Test returned pointer",
-    )
-    ft.buffer_equals(
-        ft_dest,
-        expected,
-        "Test destination buffer",
-    )
-    ft.buffer_equals(
-        ft_src,
-        src_original,
-        "Test source buffer was not modified",
-    )
-    ft.assert_now()
-
     libc.returned_pointer_is(
         libc_dest,
         "Test returned pointer from memcpy() from libc",
@@ -66,9 +50,23 @@ def compare(c, dest_original, src_original, expected, count):
     libc.buffer_equals(
         libc_src,
         src_original,
-        "Test source buffer was not modified by memcpy() from libc",
+        "Test that source buffer was not modified by memcpy() from libc",
+    ).assert_reference()
+
+    ft.returned_pointer_is(
+        ft_dest,
+        "Test returned pointer",
     )
-    libc.assert_now()
+    ft.buffer_equals(
+        ft_dest,
+        expected,
+        "Test destination buffer",
+    )
+    ft.buffer_equals(
+        ft_src,
+        src_original,
+        "Test that source buffer was not modified",
+    ).assert_now()
 
 
 @suite.case("copies entire buffer")

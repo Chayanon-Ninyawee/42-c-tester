@@ -26,19 +26,17 @@ def compare(c, original, expected, count):
         count,
     )
 
-    ft.buffer_equals(
-        ft_buffer,
-        expected,
-        "Test buffer contents",
-    )
-    ft.assert_now()
-
     libc.buffer_equals(
         libc_buffer,
         expected,
         "Test buffer contents from memset() from libc",
-    )
-    libc.assert_now()
+    ).assert_reference()
+
+    ft.buffer_equals(
+        ft_buffer,
+        expected,
+        "Test buffer contents",
+    ).assert_now()
 
 
 @suite.case("zeros entire buffer")
