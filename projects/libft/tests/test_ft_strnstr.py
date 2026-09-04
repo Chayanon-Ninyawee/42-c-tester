@@ -81,6 +81,10 @@ def compare(c, big_original, little_original, len_value, expected_offset):
         ft_little,
         little_original,
         "little buffer was modified",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 

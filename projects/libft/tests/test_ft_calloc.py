@@ -15,23 +15,64 @@ def compare(c, count, size, expected):
     )
 
     if expected is None:
+        libc.is_null(
+            "Test return value from calloc() from libc",
+        )
         ft.is_null(
             "Test return value",
         )
-
-        libc.is_null(
-            "Test return value from calloc() from libc",
-        ).assert_reference()
     else:
+        libc.is_not_null(
+            "Test return value from calloc() from libc",
+        )
         ft.is_not_null(
             "Test return value",
         )
+        ft.malloc_count_equals(
+            1,
+            "Test malloc count",
+        )
+        ft.malloc_size_equals(
+            0,
+            int(count, 0) * int(size, 0),
+            "Test malloc size",
+        )
 
-        libc.is_not_null(
-            "Test return value from calloc() from libc",
-        ).assert_reference()
+    # NOTE: libc calloc doesn't really use malloc so no need to do this
+    # libc.malloc_count_equals(
+    #     1,
+    #     "Test malloc count from calloc() from libc",
+    # )
 
+    libc.assert_reference()
     ft.assert_now()
+
+
+def test_malloc_failures(c, count, size):
+    c.malloc.reset()
+
+    result = c.ft_calloc(
+        count,
+        size,
+    )
+    result.assert_now()
+
+    malloc_count = result.malloc_count
+
+    for fail_at in range(malloc_count):
+        c.malloc.fail_at(fail_at)
+
+        result = c.ft_calloc(
+            count,
+            size,
+        )
+
+        # If the return pointer from the function is not null then smt is wrong
+        result.is_null(
+            f"malloc failure at call {fail_at}",
+        ).assert_now()
+
+    c.malloc.reset()
 
 
 @suite.case("allocates zeroed memory")
@@ -106,6 +147,15 @@ def test_large(c):
     compare(c, count, size, expected)
 
 
+@suite.case("larger allocation")
+def test_larger(c):
+    count = "0x000000000fffffff"
+    size = "4"
+    expected = 0
+
+    compare(c, count, size, expected)
+
+
 @suite.case("overflow")
 def test_overflow(c):
     count = "0x8000000000000000"
@@ -122,3 +172,30 @@ def test_overflow_large_size(c):
     expected = None
 
     compare(c, count, size, expected)
+
+
+@suite.case("malloc failure")
+def test_malloc_failure(c):
+    test_malloc_failures(
+        c,
+        "10",
+        "4",
+    )
+
+
+@suite.case("malloc failure with one element")
+def test_malloc_failure_one_element(c):
+    test_malloc_failures(
+        c,
+        "1",
+        "100",
+    )
+
+
+@suite.case("malloc failure with large allocation")
+def test_malloc_failure_large(c):
+    test_malloc_failures(
+        c,
+        "1000",
+        "100",
+    )

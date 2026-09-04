@@ -70,6 +70,10 @@ def compare(c, s1_original, s2_original, n, expected):
         ft_s2,
         s2_original,
         "s2 buffer was modified",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 

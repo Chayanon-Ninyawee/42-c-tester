@@ -19,6 +19,10 @@ def compare(c, argument, expected):
     ft.equals(
         expected,
         "Test with value",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 

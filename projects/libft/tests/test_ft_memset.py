@@ -46,6 +46,10 @@ def compare(c, original, expected, value, count):
         ft_buffer,
         expected,
         "Test buffer contents",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 

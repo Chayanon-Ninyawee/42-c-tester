@@ -66,6 +66,10 @@ def compare(c, dest_original, src_original, expected, count):
         ft_src,
         src_original,
         "Test that source buffer was not modified",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 

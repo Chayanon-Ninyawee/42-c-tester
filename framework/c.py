@@ -9,6 +9,10 @@ from .ctype import CType, parse_ctype
 from .project import FunctionConfig
 from .result import AssertionFailure, UnexpectedResult
 
+MALLOC_STRIKE_DIR = Path(__file__).with_name("malloc_strike")
+MALLOC_STRIKE_SOURCE = MALLOC_STRIKE_DIR / "malloc_strike.c"
+MALLOC_STRIKE_HEADER = MALLOC_STRIKE_DIR / "malloc_strike.h"
+
 
 def run_debug_process(command, cwd):
     process = subprocess.Popen(
@@ -165,6 +169,8 @@ class CCallResult:
         returncode: int,
         buffers: dict[str, bytes] | None = None,
         pointer_values: dict[str, str] | None = None,
+        malloc_count: int = 0,
+        malloc_sizes: list[int] | None = None,
     ):
         self.value = value
         self.return_type = return_type
@@ -173,6 +179,8 @@ class CCallResult:
         self.returncode = returncode
         self.buffers = buffers or {}
         self.pointer_values = pointer_values or {}
+        self.malloc_count = malloc_count
+        self.malloc_sizes = malloc_sizes or []
 
         self.failures: list[str] = []
 
@@ -295,6 +303,56 @@ class CCallResult:
 
         return self
 
+    def malloc_count_equals(
+        self,
+        expected: int,
+        message: str | None = None,
+    ):
+        if self.malloc_count != expected:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}malloc call count mismatch\n"
+                f"  expected: {expected}\n"
+                f"  received: {self.malloc_count}"
+            )
+
+        return self
+
+    def malloc_size_equals(
+        self,
+        index: int,
+        expected: int,
+        message: str | None = None,
+    ):
+        if index < 0:
+            raise ValueError("malloc index cannot be negative")
+
+        if index >= len(self.malloc_sizes):
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}malloc call size was not recorded\n"
+                f"  index: {index}\n"
+                f"  call count: {self.malloc_count}"
+            )
+
+            return self
+
+        actual = self.malloc_sizes[index]
+
+        if actual != expected:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}malloc size mismatch\n"
+                f"  call: {index}\n"
+                f"  expected: {expected}\n"
+                f"  received: {actual}"
+            )
+
+        return self
+
     # Generic equals like doesn't use the value from the function but a value that pass in
     # (that value should be derived from the function value)
     def value_equals(
@@ -326,6 +384,27 @@ class CCallResult:
         return self
 
 
+class MallocController:
+    def __init__(self, context):
+        self.context = context
+        self._fail_at: int | None = None
+
+    def fail_at(self, index: int):
+        if index < 0:
+            raise ValueError("malloc failure index cannot be negative")
+
+        self._fail_at = index
+        return self
+
+    def reset(self):
+        self._fail_at = None
+        return self
+
+    @property
+    def fail_at_index(self):
+        return self._fail_at
+
+
 class CContext:
     def __init__(
         self,
@@ -337,6 +416,7 @@ class CContext:
         self.config = config
         self.debug = debug
         self._functions = {}
+        self.malloc = MallocController(self)
 
     def function(
         self,
@@ -450,6 +530,7 @@ class CContext:
                 function,
                 arguments,
                 buffer_outputs,
+                malloc_fail_at=self.malloc.fail_at_index,
             )
 
             if self.debug:
@@ -486,9 +567,17 @@ class CContext:
                     ]
                 )
 
+            command.extend(
+                [
+                    "-I",
+                    str(MALLOC_STRIKE_DIR),
+                ]
+            )
+
             command.extend(self.config.cflags)
 
             command.append(str(source_file))
+            command.append(str(MALLOC_STRIKE_SOURCE))
 
             for link in self.config.link:
                 command.append(str(self.project_dir / link))
@@ -498,6 +587,7 @@ class CContext:
 
             command.extend(
                 [
+                    "-Wl,--wrap=malloc",
                     "-o",
                     str(executable),
                 ]
@@ -554,6 +644,17 @@ class CContext:
                     _, name, pointer = line.split(":", 2)
                     pointer_values[name] = pointer
 
+            malloc_count = 0
+            malloc_sizes = []
+
+            for line in output:
+                if line.startswith("MALLOC_COUNT:"):
+                    malloc_count = int(line.removeprefix("MALLOC_COUNT:"))
+
+                elif line.startswith("MALLOC:"):
+                    _, _, size = line.split(":", 2)
+                    malloc_sizes.append(int(size))
+
             return_lines = [line for line in output if line.startswith("RETURN:")]
 
             if not return_lines:
@@ -569,6 +670,8 @@ class CContext:
                 returncode=result.returncode,
                 buffers=captured_buffers,
                 pointer_values=pointer_values,
+                malloc_count=malloc_count,
+                malloc_sizes=malloc_sizes,
             )
 
 
@@ -579,7 +682,7 @@ def generate_argument(argument):
     if isinstance(argument, CBufferOffset):
         return f"{argument.buffer.name} + {argument.offset}"
 
-    return argument
+    return str(argument)
 
 
 def generate_buffer(buffer: CBuffer):
@@ -605,6 +708,7 @@ def generate_harness(
     function: CFunction,
     arguments,
     buffer_outputs: dict[str, Path],
+    malloc_fail_at: int | None = None,
 ):
     argument_types = ", ".join(
         argument_type.declaration for argument_type in function.arg_types
@@ -651,9 +755,24 @@ def generate_harness(
     {argument_types}
 );"""
 
+    malloc_setup = "malloc_strike_reset();"
+
+    if malloc_fail_at is not None:
+        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
+
+    malloc_output = """
+    printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
+
+    for (size_t i = 0; i < malloc_strike_count(); i++)
+        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));
+"""
+
     return f"""
 #include <stdio.h>
+#include <stddef.h>
+#include "malloc_strike.h"
 {headers}
+
 {declaration}
 
 int main(void)
@@ -662,7 +781,11 @@ int main(void)
 
     {buffer_pointers}
 
+    {malloc_setup}
+
     {call}
+
+{malloc_output}
 
     {buffer_writes}
 

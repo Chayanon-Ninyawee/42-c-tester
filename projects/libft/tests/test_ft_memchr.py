@@ -55,6 +55,10 @@ def compare(c, original, argument, n, expected_offset):
         ft_buffer,
         original,
         "Input buffer was modified",
+    )
+    ft.malloc_count_equals(
+        0,
+        "Test malloc count",
     ).assert_now()
 
 
