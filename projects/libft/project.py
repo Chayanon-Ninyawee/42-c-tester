@@ -201,6 +201,38 @@ project = Project(
                 args=["const void *", "const void *", "size_t"],
                 headers=["string.h"],
             ),
+            # strnstr
+            "ft_strnstr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "const char *", "size_t"],
+            ),
+            "strnstr": FunctionDefinition(
+                returns="char *",
+                args=["const char *", "const char *", "size_t"],
+                headers=["bsd/string.h"],
+                link=["bsd"],
+            ),
+            # atoi
+            "ft_atoi": FunctionDefinition(
+                returns="int",
+                args=["const char *"],
+            ),
+            "atoi": FunctionDefinition(
+                returns="int",
+                args=["const char *"],
+                headers=["stdlib.h"],
+            ),
+            # calloc
+            "ft_calloc": FunctionDefinition(
+                returns="void *",
+                args=["size_t", "size_t"],
+            ),
+            "calloc": FunctionDefinition(
+                returns="void *",
+                args=["size_t", "size_t"],
+                headers=["stdlib.h"],
+                err_flags=False,
+            ),
         },
         link=[
             "libft.a",
@@ -230,5 +262,8 @@ project = Project(
         "ft_strncmp",
         "ft_memchr",
         "ft_memcmp",
+        "ft_strnstr",
+        "ft_atoi",
+        "ft_calloc",
     ],
 )
