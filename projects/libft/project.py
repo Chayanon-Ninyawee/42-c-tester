@@ -233,6 +233,16 @@ project = Project(
                 headers=["stdlib.h"],
                 err_flags=False,
             ),
+            # strdup
+            "ft_strdup": FunctionDefinition(
+                returns="char *",
+                args=["const char *"],
+            ),
+            "strdup": FunctionDefinition(
+                returns="char *",
+                args=["const char *"],
+                headers=["string.h"],
+            ),
         },
         link=[
             "libft.a",
@@ -265,5 +275,6 @@ project = Project(
         "ft_strnstr",
         "ft_atoi",
         "ft_calloc",
+        "ft_strdup",
     ],
 )
