@@ -38,6 +38,9 @@ def compare(c, dest_original, src_original, expected, count):
         count,
     )
 
+    ft.run()
+    libc.run()
+
     libc.returned_pointer_is(
         libc_dest,
         "Test returned pointer from memmove() from libc",
@@ -167,6 +170,9 @@ def test_overlap_forward(c):
         "7",
     )
 
+    ft.run()
+    libc.run()
+
     libc.returned_pointer_is(
         libc_buffer.offset(2),
         "Test returned pointer from memmove() from libc",
@@ -218,6 +224,9 @@ def test_overlap_backward(c):
         libc_buffer.offset(2),
         "7",
     )
+
+    ft.run()
+    libc.run()
 
     libc.returned_pointer_is(
         libc_buffer,
@@ -286,6 +295,9 @@ def test_large_overlap_forward(c):
         str(count),
     )
 
+    ft.run()
+    libc.run()
+
     libc.returned_pointer_is(
         libc_buffer.offset(offset),
         "Test returned pointer from memmove() from libc",
@@ -352,6 +364,9 @@ def test_large_overlap_backward(c):
         libc_buffer.offset(offset),
         str(count),
     )
+
+    ft.run()
+    libc.run()
 
     libc.returned_pointer_is(
         libc_buffer,

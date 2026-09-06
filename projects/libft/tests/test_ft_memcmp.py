@@ -39,6 +39,9 @@ def compare(c, s1_original, s2_original, n, expected):
         n,
     )
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         expected,
         "Test with memcmp() from libc",

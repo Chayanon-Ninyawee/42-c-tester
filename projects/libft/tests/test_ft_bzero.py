@@ -26,6 +26,9 @@ def compare(c, original, expected, count):
         count,
     )
 
+    ft.run()
+    libc.run()
+
     libc.buffer_equals(
         libc_buffer,
         expected,

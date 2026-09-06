@@ -42,6 +42,9 @@ def compare(c, dest_original, src_original, size, expected, return_expected):
         size,
     )
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         return_expected,
         "Test with return value from strlcat() from libc",

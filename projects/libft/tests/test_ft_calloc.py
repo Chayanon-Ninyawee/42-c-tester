@@ -14,6 +14,9 @@ def compare(c, count, size, expected):
         size,
     )
 
+    ft.run()
+    libc.run()
+
     if expected is None:
         libc.is_null(
             "Test return value from calloc() from libc",
@@ -51,24 +54,40 @@ def compare(c, count, size, expected):
 def test_malloc_failures(c, count, size):
     c.malloc.reset()
 
-    result = c.ft_calloc(
+    ft = c.ft_calloc(
         count,
         size,
     )
-    result.assert_now()
+    ft.run()
 
-    malloc_count = result.malloc_count
+    ft.is_not_null(
+        "Test return value",
+    )
+    ft.malloc_count_equals(
+        1,
+        "Test malloc count",
+    )
+    ft.malloc_size_equals(
+        0,
+        int(count, 0) * int(size, 0),
+        "Test malloc size",
+    )
+
+    ft.assert_now()
+
+    malloc_count = ft.malloc_count
 
     for fail_at in range(malloc_count):
         c.malloc.fail_at(fail_at)
 
-        result = c.ft_calloc(
+        ft = c.ft_calloc(
             count,
             size,
         )
+        ft.run()
 
         # If the return pointer from the function is not null then smt is wrong
-        result.is_null(
+        ft.is_null(
             f"malloc failure at call {fail_at}",
         ).assert_now()
 

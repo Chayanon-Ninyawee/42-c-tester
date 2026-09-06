@@ -5,10 +5,13 @@ suite = TestSuite("ft_isalpha")
 
 def compare(c, argument, expected):
     ft = c.ft_isalpha(argument)
-
     libc = c.isalpha(argument)
+
+    ft.run()
+    libc.run()
+
     # NOTE: this is because some libc implementation will return other non-zero int instead of 1
-    libc_value = int(bool(libc.return_type.parse(libc.value)))
+    libc_value = int(bool(libc.parsed_value))
 
     libc.value_equals(
         libc_value,

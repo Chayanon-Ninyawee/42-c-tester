@@ -28,6 +28,9 @@ def compare(c, original, argument, n, expected_offset):
         n,
     )
 
+    ft.run()
+    libc.run()
+
     if expected_offset is None:
         libc.is_null(
             "Test return value from memchr() from libc",

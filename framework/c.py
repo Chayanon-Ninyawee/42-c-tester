@@ -4,10 +4,10 @@ import textwrap
 from pathlib import Path
 
 from .color import Color, color
-from .ctype import CType, parse_ctype
+from .ctype import CType, PointerType, parse_ctype
 from .project import FunctionConfig
 from .result import AssertionFailure, UnexpectedResult
-from .utils import run_debug_process
+from .utils import format_buffer_diff, run_debug_process
 
 MALLOC_STRIKE_DIR = Path(__file__).with_name("malloc_strike")
 MALLOC_STRIKE_SOURCE = MALLOC_STRIKE_DIR / "malloc_strike.c"
@@ -117,29 +117,71 @@ class CFunction:
 class CCallResult:
     def __init__(
         self,
-        value: str,
-        return_type: CType,
-        stdout: bytes,
-        stderr: bytes,
-        returncode: int,
-        buffers: dict[str, bytes] | None = None,
-        pointer_values: dict[str, str] | None = None,
-        malloc_count: int = 0,
-        malloc_sizes: list[int] | None = None,
+        context,
+        function: CFunction,
+        arguments,
     ):
-        self.value = value
-        self.return_type = return_type
-        self.stdout = stdout
-        self.stderr = stderr
-        self.returncode = returncode
-        self.buffers = buffers or {}
-        self.pointer_values = pointer_values or {}
-        self.malloc_count = malloc_count
-        self.malloc_sizes = malloc_sizes or []
+        self.context = context
+        self.function = function
+        self.arguments = arguments
+
+        self.executed = False
+
+        self.value = None
+        self.return_type = function.return_type
+        self.stdout = b""
+        self.stderr = b""
+        self.returncode = None
+
+        self.buffers = {}
+        self.pointer_values = {}
+
+        self.malloc_count = 0
+        self.malloc_sizes = []
+
+        self._return_buffer_size = None
+        self.return_buffer = None
 
         self.failures: list[str] = []
 
+    def capture_return_buffer(self, size: int):
+        if self.executed:
+            raise RuntimeError("cannot configure a call after it has been executed")
+
+        if not isinstance(self.return_type, PointerType):
+            raise TypeError(f"{self.function.name} does not return a pointer")
+
+        if size < 0:
+            raise ValueError("return buffer size cannot be negative")
+
+        self._return_buffer_size = size
+
+        return self
+
+    def run(self):
+        if self.executed:
+            raise RuntimeError("call has already been executed")
+
+        self.context._execute(self)
+
+        self.executed = True
+
+        return self
+
+    def _require_run(self):
+        if not self.executed:
+            raise RuntimeError(
+                f"{self.function.name} has not been executed; " "call .run() first"
+            )
+
+    @property
+    def parsed_value(self):
+        self._require_run()
+        return self.return_type.parse(self.value)
+
     def equals(self, expected, message: str | None = None):
+        self._require_run()
+
         if isinstance(expected, bytes):
             raise TypeError(
                 "equals() cannot compare bytes; " "use buffer_equals() instead"
@@ -159,6 +201,8 @@ class CCallResult:
         return self
 
     def not_equal(self, expected, message: str | None = None):
+        self._require_run()
+
         if isinstance(expected, bytes):
             raise TypeError(
                 "not_equal() cannot compare bytes; " "use buffer_equals() instead"
@@ -183,6 +227,8 @@ class CCallResult:
         expected: bytes,
         message: str | None = None,
     ):
+        self._require_run()
+
         if buffer.name not in self.buffers:
             raise RuntimeError(f"buffer '{buffer.name}' was not captured")
 
@@ -191,15 +237,60 @@ class CCallResult:
         if actual != expected:
             prefix = f"{message}: " if message else ""
 
+            diff = format_buffer_diff(
+                expected,
+                self.return_buffer,
+            )
+
             self.failures.append(
                 f"{prefix}buffer '{buffer.name}' mismatch\n"
                 f"  expected: {expected!r}\n"
                 f"  received: {actual!r}"
+                f"{diff}"
+            )
+
+        return self
+
+    def returned_buffer_equals(
+        self,
+        expected: bytes,
+        message: str | None = None,
+    ):
+        self._require_run()
+
+        if self._return_buffer_size is None:
+            raise RuntimeError(
+                "returned buffer was not requested; "
+                "call capture_return_buffer() first"
+            )
+
+        if self.return_buffer is None:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(f"{prefix}returned buffer is NULL")
+
+            return self
+
+        if self.return_buffer != expected:
+            prefix = f"{message}: " if message else ""
+
+            diff = format_buffer_diff(
+                expected,
+                self.return_buffer,
+            )
+
+            self.failures.append(
+                f"{prefix}returned buffer mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {self.return_buffer!r}"
+                f"{diff}"
             )
 
         return self
 
     def equals_string(self, expected: str, message: str | None = None):
+        self._require_run()
+
         if self.value != expected:
             prefix = f"{message}: " if message else ""
 
@@ -212,6 +303,8 @@ class CCallResult:
         return self
 
     def is_null(self, message: str | None = None):
+        self._require_run()
+
         if self.value != "NULL":
             prefix = f"{message}: " if message else ""
 
@@ -222,6 +315,8 @@ class CCallResult:
         return self
 
     def is_not_null(self, message: str | None = None):
+        self._require_run()
+
         if self.value == "NULL":
             prefix = f"{message}: " if message else ""
 
@@ -230,6 +325,8 @@ class CCallResult:
         return self
 
     def returned_pointer_is(self, buffer, message: str | None = None):
+        self._require_run()
+
         if isinstance(buffer, CBufferOffset):
             base = self.pointer_values.get(buffer.buffer.name)
 
@@ -263,6 +360,8 @@ class CCallResult:
         expected: int,
         message: str | None = None,
     ):
+        self._require_run()
+
         if self.malloc_count != expected:
             prefix = f"{message}: " if message else ""
 
@@ -280,6 +379,8 @@ class CCallResult:
         expected: int,
         message: str | None = None,
     ):
+        self._require_run()
+
         if index < 0:
             raise ValueError("malloc index cannot be negative")
 
@@ -308,14 +409,14 @@ class CCallResult:
 
         return self
 
-    # Generic equals like doesn't use the value from the function but a value that pass in
-    # (that value should be derived from the function value)
     def value_equals(
         self,
         actual,
         expected,
         message: str | None = None,
     ):
+        self._require_run()
+
         if actual != expected:
             prefix = f"{message}: " if message else ""
 
@@ -328,14 +429,19 @@ class CCallResult:
         return self
 
     def assert_now(self):
+        self._require_run()
+
         if self.failures:
             raise AssertionFailure("\n\n".join(self.failures))
 
         return self
 
     def assert_reference(self):
+        self._require_run()
+
         if self.failures:
             raise UnexpectedResult("\n\n".join(self.failures))
+
         return self
 
 
@@ -374,6 +480,8 @@ def generate_harness(
     function: CFunction,
     arguments,
     buffer_outputs: dict[str, Path],
+    return_buffer_output: Path | None = None,
+    return_buffer_size: int | None = None,
     malloc_fail_at: int | None = None,
 ):
     argument_types = ", ".join(
@@ -412,6 +520,16 @@ def generate_harness(
 
     output = function.return_type.generate_output("result")
 
+    return_buffer_write = ""
+
+    if return_buffer_output is not None:
+        return_buffer_write = (
+            f"if (result != NULL) {{ "
+            f'FILE *f = fopen("{return_buffer_output}", "wb"); '
+            f"fwrite(result, 1, {return_buffer_size}, f); "
+            f"fclose(f); }}"
+        )
+
     headers = "\n".join(f"#include <{header}>" for header in function.headers)
 
     declaration = ""
@@ -424,14 +542,12 @@ def generate_harness(
     malloc_setup = "malloc_strike_reset();"
 
     if malloc_fail_at is not None:
-        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
+        malloc_setup += f"\nmalloc_strike_fail_at({malloc_fail_at});"
 
-    malloc_output = """
-    printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
+    malloc_output = """printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
 
     for (size_t i = 0; i < malloc_strike_count(); i++)
-        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));
-"""
+        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));"""
 
     return f"""
 #include <stdio.h>
@@ -451,9 +567,11 @@ int main(void)
 
     {call}
 
-{malloc_output}
+    {malloc_output}
 
     {buffer_writes}
+
+    {return_buffer_write}
 
     {output}
 
@@ -549,9 +667,10 @@ class CContext:
                 f"got {len(arguments)}"
             )
 
-        return self._execute(
-            function,
-            list(arguments),
+        return CCallResult(
+            context=self,
+            function=function,
+            arguments=list(arguments),
         )
 
     def program(self, executable: str):
@@ -562,11 +681,9 @@ class CContext:
             executable,
         )
 
-    def _execute(
-        self,
-        function: CFunction,
-        arguments,
-    ):
+    def _execute(self, call_result: CCallResult):
+        function = call_result.function
+        arguments = call_result.arguments
 
         buffers = []
 
@@ -583,10 +700,17 @@ class CContext:
                 buffer.name: temp_dir / f"{buffer.name}.bin" for buffer in buffers
             }
 
+            return_buffer_output = None
+
+            if call_result._return_buffer_size is not None:
+                return_buffer_output = temp_dir / "return.bin"
+
             source = generate_harness(
                 function,
                 arguments,
                 buffer_outputs,
+                return_buffer_output=return_buffer_output,
+                return_buffer_size=call_result._return_buffer_size,
                 malloc_fail_at=self.malloc.fail_at_index,
             )
 
@@ -719,14 +843,17 @@ class CContext:
 
             value = return_lines[-1].removeprefix("RETURN:")
 
-            return CCallResult(
-                value=value,
-                return_type=function.return_type,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                returncode=result.returncode,
-                buffers=captured_buffers,
-                pointer_values=pointer_values,
-                malloc_count=malloc_count,
-                malloc_sizes=malloc_sizes,
-            )
+            call_result.value = value
+            call_result.stdout = result.stdout
+            call_result.stderr = result.stderr
+            call_result.returncode = result.returncode
+            call_result.buffers = captured_buffers
+            call_result.pointer_values = pointer_values
+            call_result.malloc_count = malloc_count
+            call_result.malloc_sizes = malloc_sizes
+
+            if return_buffer_output is not None:
+                if return_buffer_output.exists():
+                    call_result.return_buffer = return_buffer_output.read_bytes()
+
+            return call_result

@@ -38,6 +38,9 @@ def compare(c, dest_original, src_original, expected, count):
         count,
     )
 
+    ft.run()
+    libc.run()
+
     libc.returned_pointer_is(
         libc_dest,
         "Test returned pointer from memcpy() from libc",

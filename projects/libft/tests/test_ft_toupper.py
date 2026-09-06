@@ -7,6 +7,9 @@ def compare(c, argument, expected):
     ft = c.ft_toupper(argument)
     libc = c.toupper(argument)
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         expected,
         "Test with toupper() from libc",

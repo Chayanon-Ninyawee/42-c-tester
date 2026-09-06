@@ -42,6 +42,9 @@ def compare(c, big_original, little_original, len_value, expected_offset):
         len_value,
     )
 
+    ft.run()
+    libc.run()
+
     if expected_offset is None:
         libc.is_null(
             "Test return value from strnstr() from libc",

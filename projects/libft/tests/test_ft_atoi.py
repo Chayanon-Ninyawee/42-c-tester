@@ -26,6 +26,9 @@ def compare(c, original, expected):
         libc_buffer,
     )
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         expected,
         "Test with atoi() from libc",

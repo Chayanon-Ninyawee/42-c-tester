@@ -18,13 +18,14 @@ def compare(c, original):
         name="libc_s",
     )
 
-    ft = c.ft_strdup(
-        ft_s,
-    )
+    ft = c.ft_strdup(ft_s)
+    libc = c.strdup(libc_s)
 
-    libc = c.strdup(
-        libc_s,
-    )
+    ft.capture_return_buffer(len(original))
+    libc.capture_return_buffer(len(original))
+
+    ft.run()
+    libc.run()
 
     ft.is_not_null(
         "Test return value",
@@ -35,14 +36,17 @@ def compare(c, original):
     )
     ft.malloc_size_equals(
         0,
-        # no need to +1 since the len already included the null terminator
-        len(original) + 1,
+        len(original),
         "Test malloc size",
     )
     ft.buffer_equals(
         ft_s,
         original,
         "Source buffer was modified",
+    )
+    ft.returned_buffer_equals(
+        original,
+        "Returned buffer mismatch",
     )
 
     libc.is_not_null(
@@ -52,8 +56,13 @@ def compare(c, original):
         libc_s,
         original,
         "Source buffer was modified by strdup() from libc",
-    ).assert_reference()
+    )
+    libc.returned_buffer_equals(
+        original,
+        "Returned buffer mismatch from strdup() from libc",
+    )
 
+    libc.assert_reference()
     ft.assert_now()
 
 
@@ -67,23 +76,53 @@ def test_malloc_failures(c, original):
         name="ft_s",
     )
 
-    result = c.ft_strdup(
-        ft_s,
-    )
-    result.assert_now()
+    ft = c.ft_strdup(ft_s)
 
-    malloc_count = result.malloc_count
+    ft.capture_return_buffer(len(original))
+    ft.run()
+
+    ft.is_not_null(
+        "Test return value",
+    )
+    ft.malloc_count_equals(
+        1,
+        "Test malloc count",
+    )
+    ft.malloc_size_equals(
+        0,
+        len(original),
+        "Test malloc size",
+    )
+    ft.buffer_equals(
+        ft_s,
+        original,
+        "Source buffer was modified",
+    )
+    ft.returned_buffer_equals(
+        original,
+        "Returned buffer mismatch",
+    )
+    ft.assert_now()
+
+    malloc_count = ft.malloc_count
 
     for fail_at in range(malloc_count):
         c.malloc.fail_at(fail_at)
 
-        result = c.ft_strdup(
+        ft = c.ft_strdup(
             ft_s,
         )
+        ft.run()
 
-        result.is_null(
+        ft.is_null(
             f"malloc failure at call {fail_at}",
-        ).assert_now()
+        )
+        ft.buffer_equals(
+            ft_s,
+            original,
+            "Source buffer was modified",
+        )
+        ft.assert_now()
 
     c.malloc.reset()
 
@@ -122,7 +161,7 @@ def test_special(c):
 
 @suite.case("large string 1")
 def test_large_1(c):
-    compare(c, (b"0123456789" * 100))  # + b"\0",
+    compare(c, (b"0123456789" * 100 + b"\0"))
 
 
 @suite.case("large string 2")
@@ -130,6 +169,38 @@ def test_large_2(c):
     compare(
         c,
         b"This is a test string that might be quite long, since I am going to keep typing. But im too lazy now so my language will not be formal anymore. welp i think it's long enough idk. i will just add some random letter then. iohqwerauiohfjlnuiohefknldvioh maybe some special char too #!@$%&#%^TYUO@I$*@#$^@&(%#^@&$%^@*^$&*(@)$@$(@%$@())) 12345678923235647389058676$%&$%^#%^%^*()*&GCBHJKEGYIGCSB^ROP}P}{{{}||}\0",
+    )
+
+
+@suite.case("binary data")
+def test_binary(c):
+    compare(
+        c,
+        b"\x01\x02\x03\x04\x05\x06\x07\x08\0",
+    )
+
+
+@suite.case("binary data with high bytes")
+def test_binary_high_bytes(c):
+    compare(
+        c,
+        b"\x67\x01\x02\x7f\x80\x81\xfe\xff\0",
+    )
+
+
+@suite.case("binary data mixed with text")
+def test_binary_mixed(c):
+    compare(
+        c,
+        b"hello\x01\x02\x03\x7f\x80\xfe\xffworld\0",
+    )
+
+
+@suite.case("all byte values")
+def test_all_bytes(c):
+    compare(
+        c,
+        bytes(range(1, 256)) + b"\0",
     )
 
 
@@ -146,4 +217,12 @@ def test_malloc_failure_2(c):
     test_malloc_failures(
         c,
         b"This is a test string that might be quite long, since I am going to keep typing. But im too lazy now so my language will not be formal anymore. welp i think it's long enough idk. i will just add some random letter then. iohqwerauiohfjlnuiohefknldvioh maybe some special char too #!@$%&#%^TYUO@I$*@#$^@&(%#^@&$%^@*^$&*(@)$@$(@%$@())) 12345678923235647389058676$%&$%^#%^%^*()*&GCBHJKEGYIGCSB^ROP}P}{{{}||}\0",
+    )
+
+
+@suite.case("malloc failure binary data")
+def test_malloc_failure_binary(c):
+    test_malloc_failures(
+        c,
+        b"\x01\x02\x03\x04\x05\x06\x07\x08\0",
     )

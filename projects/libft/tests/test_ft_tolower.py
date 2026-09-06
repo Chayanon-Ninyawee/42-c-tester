@@ -7,6 +7,9 @@ def compare(c, argument, expected):
     ft = c.ft_tolower(argument)
     libc = c.tolower(argument)
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         expected,
         "Test with tolower() from libc",

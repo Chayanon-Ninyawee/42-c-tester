@@ -28,6 +28,9 @@ def compare(c, original, expected, value, count):
         count,
     )
 
+    ft.run()
+    libc.run()
+
     libc.returned_pointer_is(
         libc_buffer,
         "Test returned pointer from memset() from libc",

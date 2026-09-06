@@ -28,6 +28,9 @@ def compare(c, original, argument, expected_offset):
         argument,
     )
 
+    ft.run()
+    libc.run()
+
     if expected_offset is None:
         libc.is_null(
             "Test return value from strchr() from libc",

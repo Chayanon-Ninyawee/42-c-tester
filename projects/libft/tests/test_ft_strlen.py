@@ -21,6 +21,9 @@ def compare(c, original, expected):
     ft = c.ft_strlen(ft_buffer)
     libc = c.strlen(libc_buffer)
 
+    ft.run()
+    libc.run()
+
     libc.equals(
         expected,
         "Test with strlen() from libc",
