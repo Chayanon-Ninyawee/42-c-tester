@@ -1,4 +1,3 @@
-import selectors
 import subprocess
 import tempfile
 import textwrap
@@ -8,77 +7,11 @@ from .color import Color, color
 from .ctype import CType, parse_ctype
 from .project import FunctionConfig
 from .result import AssertionFailure, UnexpectedResult
+from .utils import run_debug_process
 
 MALLOC_STRIKE_DIR = Path(__file__).with_name("malloc_strike")
 MALLOC_STRIKE_SOURCE = MALLOC_STRIKE_DIR / "malloc_strike.c"
 MALLOC_STRIKE_HEADER = MALLOC_STRIKE_DIR / "malloc_strike.h"
-
-
-def run_debug_process(command, cwd):
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=0,
-    )
-
-    selector = selectors.DefaultSelector()
-
-    selector.register(
-        process.stdout,
-        selectors.EVENT_READ,
-        "STDOUT",
-    )
-
-    selector.register(
-        process.stderr,
-        selectors.EVENT_READ,
-        "STDERR",
-    )
-
-    stdout = bytearray()
-    stderr = bytearray()
-
-    print()
-    print(color("  [DEBUG] Program output", Color.CYAN))
-    print(color("  ────────────────────────────────────", Color.CYAN))
-
-    while selector.get_map():
-        for key, _ in selector.select():
-            stream = key.fileobj
-            name = key.data
-
-            data = stream.read(4096)
-
-            if not data:
-                selector.unregister(stream)
-                continue
-
-            if name == "STDOUT":
-                stdout.extend(data)
-                prefix = color("  STDOUT:", Color.BLUE)
-            else:
-                stderr.extend(data)
-                prefix = color("  STDERR:", Color.MAGENTA)
-
-            text = data.decode(errors="replace")
-
-            for line in text.splitlines():
-                print(f"{prefix} {line}")
-
-    returncode = process.wait()
-
-    selector.close()
-
-    print(color("  ────────────────────────────────────", Color.CYAN))
-
-    return subprocess.CompletedProcess(
-        command,
-        returncode,
-        bytes(stdout),
-        bytes(stderr),
-    )
 
 
 class CBuffer:
@@ -104,10 +37,22 @@ class CBuffer:
         self.data = data
         self.size = size
         self.name = name
-        self.type = type
+        self.type = parse_ctype(type)
 
     def __repr__(self):
         return self.name
+
+    def generate(self):
+        if self.size <= 0:
+            raise ValueError("zero-sized C buffers are not supported")
+
+        values = ", ".join(f"0x{byte:02x}" for byte in self.data)
+
+        return self.type.generate_array(
+            self.name,
+            self.size,
+            values,
+        )
 
     def offset(self, offset: int):
         return CBufferOffset(self, offset)
@@ -129,6 +74,16 @@ class CBufferOffset:
 
     def __repr__(self):
         return f"{self.buffer.name}.offset({self.offset})"
+
+
+def get_buffer(argument):
+    if isinstance(argument, CBuffer):
+        return argument
+
+    if isinstance(argument, CBufferOffset):
+        return argument.buffer
+
+    return None
 
 
 class CFunction:
@@ -405,6 +360,108 @@ class MallocController:
         return self._fail_at
 
 
+def generate_argument(argument):
+    if isinstance(argument, CBuffer):
+        return argument.name
+
+    if isinstance(argument, CBufferOffset):
+        return f"{argument.buffer.name} + {argument.offset}"
+
+    return str(argument)
+
+
+def generate_harness(
+    function: CFunction,
+    arguments,
+    buffer_outputs: dict[str, Path],
+    malloc_fail_at: int | None = None,
+):
+    argument_types = ", ".join(
+        argument_type.declaration for argument_type in function.arg_types
+    )
+
+    if not argument_types:
+        argument_types = "void"
+
+    argument_values = ", ".join(generate_argument(argument) for argument in arguments)
+
+    buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
+
+    buffer_declarations = "\n    ".join(buffer.generate() for buffer in buffers)
+
+    buffer_pointers = "\n    ".join(
+        f'printf("BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
+        for buffer in buffers
+    )
+
+    buffer_writes = "\n    ".join(
+        (
+            f'{{ FILE *f = fopen("{path}", "wb"); '
+            f"fwrite({buffer.name}, 1, {buffer.size}, f); "
+            f"fclose(f); }}"
+        )
+        for buffer, path in (
+            (buffer, buffer_outputs[buffer.name]) for buffer in buffers
+        )
+    )
+
+    call = function.return_type.generate_call(
+        function.name,
+        argument_values,
+    )
+
+    output = function.return_type.generate_output("result")
+
+    headers = "\n".join(f"#include <{header}>" for header in function.headers)
+
+    declaration = ""
+
+    if not function.headers:
+        declaration = f"""extern {function.return_type.declaration} {function.name}(
+    {argument_types}
+);"""
+
+    malloc_setup = "malloc_strike_reset();"
+
+    if malloc_fail_at is not None:
+        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
+
+    malloc_output = """
+    printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
+
+    for (size_t i = 0; i < malloc_strike_count(); i++)
+        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));
+"""
+
+    return f"""
+#include <stdio.h>
+#include <stddef.h>
+#include "malloc_strike.h"
+{headers}
+
+{declaration}
+
+int main(void)
+{{
+    {buffer_declarations}
+
+    {buffer_pointers}
+
+    {malloc_setup}
+
+    {call}
+
+{malloc_output}
+
+    {buffer_writes}
+
+    {output}
+
+    return 0;
+}}
+"""
+
+
 class CContext:
     def __init__(
         self,
@@ -673,124 +730,3 @@ class CContext:
                 malloc_count=malloc_count,
                 malloc_sizes=malloc_sizes,
             )
-
-
-def generate_argument(argument):
-    if isinstance(argument, CBuffer):
-        return argument.name
-
-    if isinstance(argument, CBufferOffset):
-        return f"{argument.buffer.name} + {argument.offset}"
-
-    return str(argument)
-
-
-def generate_buffer(buffer: CBuffer):
-    if buffer.size <= 0:
-        raise ValueError("zero-sized C buffers are not supported")
-
-    values = ", ".join(f"0x{byte:02x}" for byte in buffer.data)
-
-    return f"{buffer.type} {buffer.name}[{buffer.size}]" f" = {{ {values} }};"
-
-
-def get_buffer(argument):
-    if isinstance(argument, CBuffer):
-        return argument
-
-    if isinstance(argument, CBufferOffset):
-        return argument.buffer
-
-    return None
-
-
-def generate_harness(
-    function: CFunction,
-    arguments,
-    buffer_outputs: dict[str, Path],
-    malloc_fail_at: int | None = None,
-):
-    argument_types = ", ".join(
-        argument_type.declaration for argument_type in function.arg_types
-    )
-
-    if not argument_types:
-        argument_types = "void"
-
-    argument_values = ", ".join(generate_argument(argument) for argument in arguments)
-
-    buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
-
-    buffer_declarations = "\n    ".join(generate_buffer(buffer) for buffer in buffers)
-
-    buffer_pointers = "\n    ".join(
-        f'printf("BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
-        for buffer in buffers
-    )
-
-    buffer_writes = "\n    ".join(
-        (
-            f'{{ FILE *f = fopen("{path}", "wb"); '
-            f"fwrite({buffer.name}, 1, {buffer.size}, f); "
-            f"fclose(f); }}"
-        )
-        for buffer, path in (
-            (buffer, buffer_outputs[buffer.name]) for buffer in buffers
-        )
-    )
-
-    call = function.return_type.generate_call(
-        function.name,
-        argument_values,
-    )
-
-    output = function.return_type.serialize("result")
-
-    headers = "\n".join(f"#include <{header}>" for header in function.headers)
-
-    declaration = ""
-
-    if not function.headers:
-        declaration = f"""extern {function.return_type.declaration} {function.name}(
-    {argument_types}
-);"""
-
-    malloc_setup = "malloc_strike_reset();"
-
-    if malloc_fail_at is not None:
-        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
-
-    malloc_output = """
-    printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
-
-    for (size_t i = 0; i < malloc_strike_count(); i++)
-        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));
-"""
-
-    return f"""
-#include <stdio.h>
-#include <stddef.h>
-#include "malloc_strike.h"
-{headers}
-
-{declaration}
-
-int main(void)
-{{
-    {buffer_declarations}
-
-    {buffer_pointers}
-
-    {malloc_setup}
-
-    {call}
-
-{malloc_output}
-
-    {buffer_writes}
-
-    {output}
-
-    return 0;
-}}
-"""

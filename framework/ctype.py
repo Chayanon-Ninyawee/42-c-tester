@@ -11,8 +11,25 @@ class CType(ABC):
     def __init__(self, declaration: str):
         self.declaration = declaration
 
-    def declare(self, name: str) -> str:
-        return f"{self.declaration} {name}"
+    def generate_declaration(
+        self,
+        name: str,
+        value: str | None = None,
+    ) -> str:
+        declaration = f"{self.declaration} {name}"
+
+        if value is None:
+            return f"{declaration};"
+
+        return f"{declaration} = {value};"
+
+    def generate_array(
+        self,
+        name: str,
+        size: int,
+        values: str,
+    ) -> str:
+        return f"{self.declaration} {name}[{size}]" f" = {{ {values} }};"
 
     @classmethod
     @abstractmethod
@@ -28,7 +45,7 @@ class CType(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def serialize(self, expression: str) -> str:
+    def generate_output(self, expression: str) -> str:
         raise NotImplementedError
 
     @abstractmethod
@@ -44,6 +61,13 @@ class VoidType(CType):
     def __init__(self, declaration: str):
         super().__init__(declaration)
 
+    def generate_declaration(
+        self,
+        name: str,
+        value: str | None = None,
+    ) -> str:
+        raise ValueError("void values cannot be declared")
+
     def generate_call(
         self,
         function_name: str,
@@ -51,7 +75,7 @@ class VoidType(CType):
     ) -> str:
         return f"{function_name}({arguments});"
 
-    def serialize(self, expression: str) -> str:
+    def generate_output(self, expression: str) -> str:
         return 'printf("RETURN:VOID\\n");'
 
     def parse(self, value: str):
@@ -92,7 +116,7 @@ class IntegerType(CType):
     ) -> str:
         return f"{self.declaration} result = " f"{function_name}({arguments});"
 
-    def serialize(self, expression: str) -> str:
+    def generate_output(self, expression: str) -> str:
         fmt = self.FORMATS[self.declaration]
 
         return f'printf("RETURN:{fmt}\\n", {expression});'
@@ -116,7 +140,7 @@ class PointerType(CType):
     ) -> str:
         return f"{self.declaration} result = " f"{function_name}({arguments});"
 
-    def serialize(self, expression: str) -> str:
+    def generate_output(self, expression: str) -> str:
         return (
             f"if ({expression} == NULL) "
             f'printf("RETURN:NULL\\n"); '
