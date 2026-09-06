@@ -243,6 +243,23 @@ project = Project(
                 args=["const char *"],
                 headers=["string.h"],
             ),
+            # ft_substr
+            "ft_substr": FunctionDefinition(
+                returns="char *",
+                args=[
+                    "const char *",
+                    "unsigned int",
+                    "size_t",
+                ],
+            ),
+            # ft_strjoin
+            "ft_strjoin": FunctionDefinition(
+                returns="char *",
+                args=[
+                    "const char *",
+                    "const char *",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -276,5 +293,7 @@ project = Project(
         "ft_atoi",
         "ft_calloc",
         "ft_strdup",
+        "ft_substr",
+        "ft_strjoin",
     ],
 )
