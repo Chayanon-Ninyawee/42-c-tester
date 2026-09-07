@@ -1,6 +1,8 @@
 #include "malloc_strike.h"
+#include <string.h>
 
 #define MALLOC_MAX_RECORDS 1024
+#define MALLOC_POISON 0xAA
 
 static size_t g_malloc_count;
 static size_t g_malloc_sizes[MALLOC_MAX_RECORDS];
@@ -10,9 +12,7 @@ static size_t g_malloc_fail_at = (size_t)-1;
 void *__real_malloc(size_t size);
 
 void *__wrap_malloc(size_t size) {
-    size_t index;
-
-    index = g_malloc_count;
+    size_t index = g_malloc_count;
     g_malloc_count++;
 
     if (g_malloc_record_count < MALLOC_MAX_RECORDS) {
@@ -21,7 +21,12 @@ void *__wrap_malloc(size_t size) {
     }
 
     if (index == g_malloc_fail_at) return (NULL);
-    return (__real_malloc(size));
+
+    void *ptr = __real_malloc(size);
+
+    if (ptr != NULL) memset(ptr, MALLOC_POISON, size);
+
+    return ptr;
 }
 
 void malloc_strike_reset(void) {
