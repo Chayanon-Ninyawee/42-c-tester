@@ -249,9 +249,10 @@ def run_project(
         return
 
     context = CContext(
-        project_dir,
+        project,
         project.functions,
         debug=debug,
+        asan=True,
     )
 
     results = TestResults()

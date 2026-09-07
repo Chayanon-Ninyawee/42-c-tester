@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .color import Color, color
 from .ctype import CType, PointerType, parse_ctype
-from .project import FunctionConfig
+from .project import FunctionConfig, Project
 from .result import AssertionFailure, UnexpectedResult
 from .utils import format_buffer_diff, run_debug_process
 
@@ -680,23 +680,23 @@ def generate_argument(argument):
 def generate_capture(capture, expression):
     if capture.kind == "buffer":
         return (
-            f"if ({expression} == NULL) {{\n"
-            f'    fprintf(f, "NULL\\n");\n'
-            f"}} else {{\n"
-            f'    fprintf(f, "BUFFER:{capture.size}:");\n'
-            f"    for (size_t i = 0; i < {capture.size}; i++)\n"
-            f'        fprintf(f, "%02x", '
-            f"((unsigned char *)({expression}))[i]);\n"
-            f'    fprintf(f, "\\n");\n'
-            f"}}"
+            f"    if ({expression} == NULL) {{\n"
+            f'        fprintf(f, "NULL\\n");\n'
+            f"    }} else {{\n"
+            f'        fprintf(f, "BUFFER:{capture.size}:");\n'
+            f"        for (size_t i = 0; i < {capture.size}; i++)\n"
+            f'            fprintf(f, "%02x", '
+            f"    ((unsigned char *)({expression}))[i]);\n"
+            f'        fprintf(f, "\\n");\n'
+            f"    }}"
         )
 
     if capture.kind == "pointer_raw":
         return (
-            f"if ({expression} == NULL)\n"
-            f'    fprintf(f, "POINTER:NULL\\n");\n'
-            f"else\n"
-            f'    fprintf(f, "POINTER:%p\\n", (void *)({expression}));'
+            f"    if ({expression} == NULL)\n"
+            f'        fprintf(f, "POINTER:NULL\\n");\n'
+            f"    else\n"
+            f'        fprintf(f, "POINTER:%p\\n", (void *)({expression}));'
         )
 
     if capture.kind == "pointer_array":
@@ -718,13 +718,13 @@ def generate_capture(capture, expression):
             )
 
         return (
-            f"if ({expression} == NULL) {{\n"
-            f'    fprintf(f, "NULL\\n");\n'
-            f"}} else {{\n"
-            f'    fprintf(f, "POINTER_ARRAY\\n");\n'
-            f'    fprintf(f, "COUNT:{capture.size}\\n");\n'
-            f"{textwrap.indent(chr(10).join(children), '    ')}\n"
-            f"}}"
+            f"    if ({expression} == NULL) {{\n"
+            f'        fprintf(f, "NULL\\n");\n'
+            f"    }} else {{\n"
+            f'        fprintf(f, "POINTER_ARRAY\\n");\n'
+            f'        fprintf(f, "COUNT:{capture.size}\\n");\n'
+            f"    {textwrap.indent(chr(10).join(children), '    ')}\n"
+            f"    }}"
         )
 
     raise ValueError(f"unknown capture type: {capture.kind}")
@@ -776,6 +776,32 @@ def parse_capture(lines):
     return parse_node(next(lines))
 
 
+def generate_cleanup(capture, expression):
+    if capture.kind == "buffer":
+        return f"free({expression});"
+
+    if capture.kind == "pointer_raw":
+        return ""
+
+    if capture.kind == "pointer_array":
+        cleanup = []
+
+        for index, child in enumerate(capture.children):
+            code = generate_cleanup(
+                child,
+                f"{expression}[{index}]",
+            )
+
+            if code:
+                cleanup.append(code)
+
+        cleanup.append(f"free({expression});")
+
+        return "\n".join(cleanup)
+
+    raise ValueError(f"unknown capture type: {capture.kind}")
+
+
 def generate_harness(
     function: CFunction,
     arguments,
@@ -821,6 +847,7 @@ def generate_harness(
     output = function.return_type.generate_output("result")
 
     capture_write = ""
+    cleanup_write = ""
 
     if capture_output is not None:
         if capture is None:
@@ -833,10 +860,18 @@ def generate_harness(
 
         capture_write = (
             f'{{ FILE *f = fopen("{capture_output}", "w"); '
-            f"if (f == NULL) return 1; "
+            f"if (f == NULL) return 1;\n"
             f"{capture_code}; "
             f"fclose(f); }}"
         )
+
+        cleanup_code = generate_cleanup(
+            capture,
+            "result",
+        )
+
+        if cleanup_code:
+            cleanup_write = cleanup_code
 
     headers = "\n".join(f"#include <{header}>" for header in function.headers)
 
@@ -850,7 +885,7 @@ def generate_harness(
     malloc_setup = "malloc_strike_reset();"
 
     if malloc_fail_at is not None:
-        malloc_setup += f"\nmalloc_strike_fail_at({malloc_fail_at});"
+        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
 
     malloc_output = """printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
 
@@ -860,6 +895,7 @@ def generate_harness(
     return f"""
 #include <stdio.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include "malloc_strike.h"
 {headers}
 
@@ -883,6 +919,8 @@ int main(void)
 
     {output}
 
+    {cleanup_write}
+
     return 0;
 }}
 """
@@ -891,13 +929,17 @@ int main(void)
 class CContext:
     def __init__(
         self,
-        project_dir: Path,
+        project: Project,
         config: FunctionConfig | None,
         debug: bool = False,
+        asan: bool = False,
     ):
-        self.project_dir = project_dir
+        self.project = project
+        self.project_dir = project.directory
         self.config = config
         self.debug = debug
+        self.asan = asan
+        self._asan_built = False
         self._functions = {}
         self.malloc = MallocController(self)
 
@@ -989,9 +1031,60 @@ class CContext:
             executable,
         )
 
+    def _build_asan(self):
+        if not self.asan or self._asan_built:
+            return
+
+        build = self.project.build
+
+        if build.method != "make":
+            raise RuntimeError("ASan testing currently requires a make build")
+
+        flags = [
+            *build.flags,
+            "-fsanitize=address",
+            "-fno-omit-frame-pointer",
+        ]
+
+        command = [
+            "make",
+            "-B",
+            f"CFLAGS={' '.join(flags)}",
+        ]
+
+        if build.target is not None:
+            command.append(build.target)
+
+        if self.debug:
+            print()
+            print(color("  [DEBUG] Building project with ASan", Color.CYAN))
+            print(
+                color(
+                    "  " + " ".join(command),
+                    Color.YELLOW,
+                )
+            )
+
+        result = subprocess.run(
+            command,
+            cwd=self.project_dir,
+            capture_output=True,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                "failed to build project with ASan:\n"
+                + result.stderr.decode(errors="replace")
+            )
+
+        self._asan_built = True
+
     def _execute(self, call_result: CCallResult):
+        self._build_asan()
+
         function = call_result.function
         arguments = call_result.arguments
+        malloc_fail_at = self.malloc.fail_at_index
 
         buffers = []
 
@@ -1044,6 +1137,14 @@ class CContext:
                 "-Wall",
                 "-Wextra",
             ]
+
+            if self.asan:
+                command.extend(
+                    [
+                        "-fsanitize=address",
+                        "-fno-omit-frame-pointer",
+                    ]
+                )
 
             if function.err_flags:
                 command.append("-Werror")
@@ -1109,11 +1210,20 @@ class CContext:
             if result.returncode < 0:
                 raise AssertionFailure("C function test crashed")
 
+            stderr = result.stderr.decode(errors="replace")
+
+            if self.asan and "AddressSanitizer" in stderr:
+                message = "AddressSanitizer detected a memory error"
+
+                if malloc_fail_at is not None:
+                    message += f" at malloc failure {malloc_fail_at}"
+
+                raise AssertionFailure(message + ":\n\n" + stderr)
+
             if result.returncode != 0:
                 raise RuntimeError(
                     "C test harness failed "
-                    f"(exit code {result.returncode})\n"
-                    + result.stderr.decode(errors="replace")
+                    f"(exit code {result.returncode})\n" + stderr
                 )
 
             captured_buffers = {}
