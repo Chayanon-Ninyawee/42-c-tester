@@ -227,12 +227,6 @@ project = Project(
                 returns="void *",
                 args=["size_t", "size_t"],
             ),
-            "calloc": FunctionDefinition(
-                returns="void *",
-                args=["size_t", "size_t"],
-                headers=["stdlib.h"],
-                err_flags=False,
-            ),
             # strdup
             "ft_strdup": FunctionDefinition(
                 returns="char *",
@@ -260,6 +254,22 @@ project = Project(
                     "const char *",
                 ],
             ),
+            # ft_strtrim
+            "ft_strtrim": FunctionDefinition(
+                returns="char *",
+                args=[
+                    "const char *",
+                    "const char *",
+                ],
+            ),
+            # ft_split
+            "ft_split": FunctionDefinition(
+                returns="char **",
+                args=[
+                    "const char *",
+                    "char",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -283,7 +293,6 @@ project = Project(
         "ft_strlcat",
         "ft_toupper",
         "ft_tolower",
-        "ft_tolower",
         "ft_strchr",
         "ft_strrchr",
         "ft_strncmp",
@@ -295,5 +304,7 @@ project = Project(
         "ft_strdup",
         "ft_substr",
         "ft_strjoin",
+        "ft_strtrim",
+        "ft_split",
     ],
 )

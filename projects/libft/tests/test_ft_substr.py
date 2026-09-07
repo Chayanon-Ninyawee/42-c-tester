@@ -1,4 +1,4 @@
-from framework import TestSuite
+from framework import Assert, Capture, TestSuite
 
 suite = TestSuite("ft_substr")
 
@@ -17,7 +17,9 @@ def compare(c, original, start, length, expected):
         str(length),
     )
 
-    ft.capture_return_buffer(len(expected))
+    ft.capture_return(
+        Capture.buffer(len(expected)),
+    )
     ft.run()
 
     ft.is_not_null(
@@ -37,10 +39,11 @@ def compare(c, original, start, length, expected):
         original,
         "Source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        expected,
+    ft.assert_return(
+        Assert.buffer_equals(expected),
         "Returned buffer mismatch",
     )
+
     ft.assert_now()
 
 
@@ -54,13 +57,16 @@ def test_malloc_failures(c, original, start, length, expected):
         name="ft_s",
     )
 
+    # Successful run to determine allocation count.
     ft = c.ft_substr(
         ft_s,
         str(start),
         str(length),
     )
 
-    ft.capture_return_buffer(len(expected))
+    ft.capture_return(
+        Capture.buffer(len(expected)),
+    )
     ft.run()
 
     ft.is_not_null(
@@ -80,10 +86,11 @@ def test_malloc_failures(c, original, start, length, expected):
         original,
         "Source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        expected,
+    ft.assert_return(
+        Assert.buffer_equals(expected),
         "Returned buffer mismatch",
     )
+
     ft.assert_now()
 
     malloc_count = ft.malloc_count
@@ -96,6 +103,8 @@ def test_malloc_failures(c, original, start, length, expected):
             str(start),
             str(length),
         )
+
+        # Expect pointer to be null so no need to free, and no need to read what inside
         ft.run()
 
         ft.is_null(
@@ -106,6 +115,7 @@ def test_malloc_failures(c, original, start, length, expected):
             original,
             "Source buffer was modified",
         )
+
         ft.assert_now()
 
     c.malloc.reset()

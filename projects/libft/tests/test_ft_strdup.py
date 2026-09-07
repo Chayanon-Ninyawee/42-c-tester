@@ -1,4 +1,4 @@
-from framework import TestSuite
+from framework import Assert, Capture, TestSuite
 
 suite = TestSuite("ft_strdup")
 
@@ -21,8 +21,12 @@ def compare(c, original):
     ft = c.ft_strdup(ft_s)
     libc = c.strdup(libc_s)
 
-    ft.capture_return_buffer(len(original))
-    libc.capture_return_buffer(len(original))
+    ft.capture_return(
+        Capture.buffer(len(original)),
+    )
+    libc.capture_return(
+        Capture.buffer(len(original)),
+    )
 
     ft.run()
     libc.run()
@@ -44,8 +48,10 @@ def compare(c, original):
         original,
         "Source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        original,
+    ft.assert_return(
+        Assert.buffer_equals(
+            original,
+        ),
         "Returned buffer mismatch",
     )
 
@@ -57,8 +63,10 @@ def compare(c, original):
         original,
         "Source buffer was modified by strdup() from libc",
     )
-    libc.returned_buffer_equals(
-        original,
+    libc.assert_return(
+        Assert.buffer_equals(
+            original,
+        ),
         "Returned buffer mismatch from strdup() from libc",
     )
 
@@ -76,9 +84,12 @@ def test_malloc_failures(c, original):
         name="ft_s",
     )
 
+    # Successful run to determine allocation count.
     ft = c.ft_strdup(ft_s)
 
-    ft.capture_return_buffer(len(original))
+    ft.capture_return(
+        Capture.buffer(len(original)),
+    )
     ft.run()
 
     ft.is_not_null(
@@ -98,10 +109,14 @@ def test_malloc_failures(c, original):
         original,
         "Source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        original,
+
+    ft.assert_return(
+        Assert.buffer_equals(
+            original,
+        ),
         "Returned buffer mismatch",
     )
+
     ft.assert_now()
 
     malloc_count = ft.malloc_count
@@ -109,9 +124,9 @@ def test_malloc_failures(c, original):
     for fail_at in range(malloc_count):
         c.malloc.fail_at(fail_at)
 
-        ft = c.ft_strdup(
-            ft_s,
-        )
+        ft = c.ft_strdup(ft_s)
+
+        # Expect pointer to be null so no need to free, and no need to read what inside
         ft.run()
 
         ft.is_null(
@@ -122,6 +137,7 @@ def test_malloc_failures(c, original):
             original,
             "Source buffer was modified",
         )
+
         ft.assert_now()
 
     c.malloc.reset()

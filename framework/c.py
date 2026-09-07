@@ -94,8 +94,8 @@ class Capture:
 
     @classmethod
     def buffer(cls, size):
-        if size <= 0:
-            raise ValueError("capture buffer size must be positive")
+        if size < 0:
+            raise ValueError("capture buffer size cannot be negative")
 
         return cls("buffer", size)
 
@@ -679,17 +679,21 @@ def generate_argument(argument):
 
 def generate_capture(capture, expression):
     if capture.kind == "buffer":
-        return (
-            f"    if ({expression} == NULL) {{\n"
-            f'        fprintf(f, "NULL\\n");\n'
-            f"    }} else {{\n"
-            f'        fprintf(f, "BUFFER:{capture.size}:");\n'
-            f"        for (size_t i = 0; i < {capture.size}; i++)\n"
-            f'            fprintf(f, "%02x", '
-            f"    ((unsigned char *)({expression}))[i]);\n"
-            f'        fprintf(f, "\\n");\n'
-            f"    }}"
-        )
+        if capture.size == 0:
+            return f"""    if ({expression} == NULL)
+        fprintf(f, "NULL\\n");
+    else
+        fprintf(f, "BUFFER:0:\\n");"""
+
+        return f"""    if ({expression} == NULL)
+        fprintf(f, "NULL\\n");
+    else
+    {{
+        fprintf(f, "BUFFER:{capture.size}:");
+        for (size_t i = 0; i < {capture.size}; i++)
+            fprintf(f, "%02x", ((unsigned char *){expression})[i]);
+        fprintf(f, "\\n");
+    }}"""
 
     if capture.kind == "pointer_raw":
         return (

@@ -1,4 +1,4 @@
-from framework import TestSuite
+from framework import Assert, Capture, TestSuite
 
 suite = TestSuite("ft_strjoin")
 
@@ -23,7 +23,9 @@ def compare(c, s1, s2, expected):
         ft_s2,
     )
 
-    ft.capture_return_buffer(len(expected))
+    ft.capture_return(
+        Capture.buffer(len(expected)),
+    )
     ft.run()
 
     ft.is_not_null(
@@ -48,8 +50,8 @@ def compare(c, s1, s2, expected):
         s2,
         "Second source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        expected,
+    ft.assert_return(
+        Assert.buffer_equals(expected),
         "Returned buffer mismatch",
     )
     ft.assert_now()
@@ -72,12 +74,15 @@ def test_malloc_failures(c, s1, s2, expected):
         name="ft_s2",
     )
 
+    # Successful run to determine allocation count.
     ft = c.ft_strjoin(
         ft_s1,
         ft_s2,
     )
 
-    ft.capture_return_buffer(len(expected))
+    ft.capture_return(
+        Capture.buffer(len(expected)),
+    )
     ft.run()
 
     ft.is_not_null(
@@ -102,8 +107,8 @@ def test_malloc_failures(c, s1, s2, expected):
         s2,
         "Second source buffer was modified",
     )
-    ft.returned_buffer_equals(
-        expected,
+    ft.assert_return(
+        Assert.buffer_equals(expected),
         "Returned buffer mismatch",
     )
     ft.assert_now()
@@ -117,6 +122,8 @@ def test_malloc_failures(c, s1, s2, expected):
             ft_s1,
             ft_s2,
         )
+
+        # Expect pointer to be null so no need to free, and no need to read what inside
         ft.run()
 
         ft.is_null(

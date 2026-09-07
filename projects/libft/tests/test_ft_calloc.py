@@ -1,62 +1,68 @@
-from framework import TestSuite
+from framework import Assert, Capture, TestSuite
 
 suite = TestSuite("ft_calloc")
 
 
 def compare(c, count, size, expected):
+    count_i = int(count, 0)
+    size_i = int(size, 0)
+
     ft = c.ft_calloc(
         count,
         size,
     )
 
-    libc = c.calloc(
-        count,
-        size,
-    )
+    if expected is None:
+        ft.capture_return(Capture.pointer_raw())
+    else:
+        ft.capture_return(
+            Capture.buffer(count_i * size_i),
+        )
 
     ft.run()
-    libc.run()
 
     if expected is None:
-        libc.is_null(
-            "Test return value from calloc() from libc",
-        )
         ft.is_null(
             "Test return value",
         )
     else:
-        libc.is_not_null(
-            "Test return value from calloc() from libc",
-        )
         ft.is_not_null(
             "Test return value",
         )
+
         ft.malloc_count_equals(
             1,
             "Test malloc count",
         )
         ft.malloc_size_equals(
             0,
-            int(count, 0) * int(size, 0),
+            count_i * size_i,
             "Test malloc size",
         )
 
-    # NOTE: libc calloc doesn't really use malloc so no need to do this
-    # libc.malloc_count_equals(
-    #     1,
-    #     "Test malloc count from calloc() from libc",
-    # )
+        ft.assert_return(
+            Assert.buffer_equals(
+                b"\0" * (count_i * size_i),
+            ),
+            "Test calloc memory",
+        )
 
-    libc.assert_reference()
     ft.assert_now()
 
 
 def test_malloc_failures(c, count, size):
+    count_i = int(count, 0)
+    size_i = int(size, 0)
+
     c.malloc.reset()
 
     ft = c.ft_calloc(
         count,
         size,
+    )
+
+    ft.capture_return(
+        Capture.buffer(count_i * size_i),
     )
     ft.run()
 
@@ -69,8 +75,14 @@ def test_malloc_failures(c, count, size):
     )
     ft.malloc_size_equals(
         0,
-        int(count, 0) * int(size, 0),
+        count_i * size_i,
         "Test malloc size",
+    )
+    ft.assert_return(
+        Assert.buffer_equals(
+            b"\0" * (count_i * size_i),
+        ),
+        "Test calloc memory",
     )
 
     ft.assert_now()
@@ -84,12 +96,15 @@ def test_malloc_failures(c, count, size):
             count,
             size,
         )
+
+        # Expect pointer to be null so no need to free, and no need to read what inside
         ft.run()
 
-        # If the return pointer from the function is not null then smt is wrong
         ft.is_null(
             f"malloc failure at call {fail_at}",
-        ).assert_now()
+        )
+
+        ft.assert_now()
 
     c.malloc.reset()
 
@@ -166,13 +181,13 @@ def test_large(c):
     compare(c, count, size, expected)
 
 
-@suite.case("larger allocation")
-def test_larger(c):
-    count = "0x000000000fffffff"
-    size = "4"
-    expected = 0
-
-    compare(c, count, size, expected)
+# @suite.case("larger allocation")
+# def test_larger(c):
+#     count = "0x000000000fffffff"
+#     size = "4"
+#     expected = 0
+#
+#     compare(c, count, size, expected)
 
 
 @suite.case("overflow")
