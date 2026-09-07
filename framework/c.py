@@ -86,6 +86,123 @@ def get_buffer(argument):
     return None
 
 
+class Capture:
+    def __init__(self, kind, size=None):
+        self.kind = kind
+        self.size = size
+        self.children = []
+
+    @classmethod
+    def buffer(cls, size):
+        if size <= 0:
+            raise ValueError("capture buffer size must be positive")
+
+        return cls("buffer", size)
+
+    @classmethod
+    def pointer_raw(cls):
+        return cls("pointer_raw")
+
+    @classmethod
+    def pointer_array(cls, size):
+        if size <= 0:
+            raise ValueError("pointer array size must be positive")
+
+        return cls("pointer_array", size)
+
+    def child(self, capture):
+        if not isinstance(capture, Capture):
+            raise TypeError("capture child must be a Capture")
+
+        if self.kind in ("buffer", "pointer_raw"):
+            raise TypeError(f"{self.kind} captures cannot have children")
+
+        if self.kind == "pointer_array":
+            if len(self.children) >= self.size:
+                raise ValueError(f"pointer array already has {self.size} children")
+
+        self.children.append(capture)
+
+        return self
+
+
+class CaptureResult:
+    def __init__(
+        self,
+        kind,
+        data=None,
+        children=None,
+        count=None,
+    ):
+        self.kind = kind
+        self.data = data
+        self.children = children or []
+        self.count = count
+
+    @property
+    def is_null(self):
+        return self.kind == "null"
+
+    def __repr__(self):
+        if self.kind == "buffer":
+            return f"CaptureResult.buffer({len(self.data)})"
+
+        if self.kind == "pointer_raw":
+            return f"CaptureResult.pointer_raw({self.data!r})"
+
+        if self.kind == "null":
+            return "CaptureResult.null()"
+
+        return f"CaptureResult.{self.kind}" f"({len(self.children)} children)"
+
+
+class Assert:
+    def __init__(
+        self,
+        kind,
+        expected=None,
+        message=None,
+    ):
+        self.kind = kind
+        self.expected = expected
+        self.message = message
+        self.children = []
+
+    @classmethod
+    def buffer_equals(cls, expected, message=None):
+        if not isinstance(expected, bytes):
+            raise TypeError("buffer assertion expects bytes")
+
+        return cls("buffer", expected, message)
+
+    @classmethod
+    def pointer_equals(cls, expected, message=None):
+        return cls("pointer_raw", expected, message)
+
+    @classmethod
+    def is_null_pointer(cls, message=None):
+        return cls("pointer_raw", None, message)
+
+    @classmethod
+    def is_not_null_pointer(cls, message=None):
+        return cls("pointer_raw", "NOT_NULL", message)
+
+    @classmethod
+    def pointer_array(cls, message=None):
+        return cls("pointer_array", message=message)
+
+    def child(self, assertion):
+        if not isinstance(assertion, Assert):
+            raise TypeError("assertion child must be an Assert")
+
+        if self.kind in ("buffer", "pointer_raw"):
+            raise TypeError(f"{self.kind} assertions cannot have children")
+
+        self.children.append(assertion)
+
+        return self
+
+
 class CFunction:
     def __init__(
         self,
@@ -139,22 +256,22 @@ class CCallResult:
         self.malloc_count = 0
         self.malloc_sizes = []
 
-        self._return_buffer_size = None
-        self.return_buffer = None
+        self._return_capture = None
+        self.return_capture = None
 
         self.failures: list[str] = []
 
-    def capture_return_buffer(self, size: int):
+    def capture_return(self, capture: Capture):
         if self.executed:
             raise RuntimeError("cannot configure a call after it has been executed")
 
         if not isinstance(self.return_type, PointerType):
             raise TypeError(f"{self.function.name} does not return a pointer")
 
-        if size < 0:
-            raise ValueError("return buffer size cannot be negative")
+        if not isinstance(capture, Capture):
+            raise TypeError("return capture must be a Capture")
 
-        self._return_buffer_size = size
+        self._return_capture = capture
 
         return self
 
@@ -174,10 +291,98 @@ class CCallResult:
                 f"{self.function.name} has not been executed; " "call .run() first"
             )
 
+    def _assert_capture(
+        self,
+        actual,
+        assertion,
+        path,
+    ):
+        def fail(message):
+            if assertion.message:
+                message = f"{assertion.message}: {message}"
+
+            self.failures.append(f"{path}: {message}")
+
+        if assertion.kind == "buffer":
+            if actual.kind == "null":
+                fail("expected buffer, received NULL")
+                return
+
+            if actual.kind != "buffer":
+                fail(f"expected buffer, received {actual.kind}")
+                return
+
+            if actual.data != assertion.expected:
+                diff = format_buffer_diff(
+                    assertion.expected,
+                    actual.data,
+                )
+
+                fail(
+                    "buffer mismatch\n"
+                    f"  expected: {assertion.expected!r}\n"
+                    f"  received: {actual.data!r}"
+                    f"{diff}"
+                )
+
+            return
+
+        if assertion.kind == "pointer_raw":
+            if actual.kind != "pointer_raw":
+                fail("expected raw pointer, " f"received {actual.kind}")
+                return
+
+            if assertion.expected == "NOT_NULL":
+                if actual.data is None:
+                    fail("expected non-NULL pointer")
+                return
+
+            if actual.data != assertion.expected:
+                fail(
+                    "pointer mismatch\n"
+                    f"  expected: {assertion.expected!r}\n"
+                    f"  received: {actual.data!r}"
+                )
+
+            return
+
+        if assertion.kind == "pointer_array":
+            if actual.kind != "pointer_array":
+                fail("expected pointer array, " f"received {actual.kind}")
+                return
+
+            if len(actual.children) != len(assertion.children):
+                fail(
+                    "pointer array size mismatch\n"
+                    f"  expected: {len(assertion.children)}\n"
+                    f"  received: {len(actual.children)}"
+                )
+
+            count = min(
+                len(actual.children),
+                len(assertion.children),
+            )
+
+            for index in range(count):
+                self._assert_capture(
+                    actual.children[index],
+                    assertion.children[index],
+                    f"{path}[{index}]",
+                )
+
+            return
+
+        raise ValueError(f"unknown assertion type: {assertion.kind}")
+
     @property
     def parsed_value(self):
         self._require_run()
         return self.return_type.parse(self.value)
+
+    @property
+    def returned_capture(self):
+        self._require_run()
+        return self.return_capture
 
     def equals(self, expected, message: str | None = None):
         self._require_run()
@@ -239,7 +444,7 @@ class CCallResult:
 
             diff = format_buffer_diff(
                 expected,
-                self.return_buffer,
+                actual,
             )
 
             self.failures.append(
@@ -256,35 +461,31 @@ class CCallResult:
         expected: bytes,
         message: str | None = None,
     ):
+        return self.assert_return(
+            Assert.buffer_equals(expected),
+            message or "returned buffer",
+        )
+
+    def assert_return(
+        self,
+        assertion: Assert,
+        message: str | None = None,
+    ):
         self._require_run()
 
-        if self._return_buffer_size is None:
+        if not isinstance(assertion, Assert):
+            raise TypeError("return assertion must be an Assert")
+
+        if self.return_capture is None:
             raise RuntimeError(
-                "returned buffer was not requested; "
-                "call capture_return_buffer() first"
+                "returned capture was not produced; " "call capture_return() first"
             )
 
-        if self.return_buffer is None:
-            prefix = f"{message}: " if message else ""
-
-            self.failures.append(f"{prefix}returned buffer is NULL")
-
-            return self
-
-        if self.return_buffer != expected:
-            prefix = f"{message}: " if message else ""
-
-            diff = format_buffer_diff(
-                expected,
-                self.return_buffer,
-            )
-
-            self.failures.append(
-                f"{prefix}returned buffer mismatch\n"
-                f"  expected: {expected!r}\n"
-                f"  received: {self.return_buffer!r}"
-                f"{diff}"
-            )
+        self._assert_capture(
+            self.return_capture,
+            assertion,
+            message or "returned capture",
+        )
 
         return self
 
@@ -476,12 +677,111 @@ def generate_argument(argument):
     return str(argument)
 
 
+def generate_capture(capture, expression):
+    if capture.kind == "buffer":
+        return (
+            f"if ({expression} == NULL) {{\n"
+            f'    fprintf(f, "NULL\\n");\n'
+            f"}} else {{\n"
+            f'    fprintf(f, "BUFFER:{capture.size}:");\n'
+            f"    for (size_t i = 0; i < {capture.size}; i++)\n"
+            f'        fprintf(f, "%02x", '
+            f"((unsigned char *)({expression}))[i]);\n"
+            f'    fprintf(f, "\\n");\n'
+            f"}}"
+        )
+
+    if capture.kind == "pointer_raw":
+        return (
+            f"if ({expression} == NULL)\n"
+            f'    fprintf(f, "POINTER:NULL\\n");\n'
+            f"else\n"
+            f'    fprintf(f, "POINTER:%p\\n", (void *)({expression}));'
+        )
+
+    if capture.kind == "pointer_array":
+        if len(capture.children) != capture.size:
+            raise ValueError(
+                "pointer_array capture has "
+                f"{len(capture.children)} children, "
+                f"expected {capture.size}"
+            )
+
+        children = []
+
+        for index, child in enumerate(capture.children):
+            children.append(
+                generate_capture(
+                    child,
+                    f"{expression}[{index}]",
+                )
+            )
+
+        return (
+            f"if ({expression} == NULL) {{\n"
+            f'    fprintf(f, "NULL\\n");\n'
+            f"}} else {{\n"
+            f'    fprintf(f, "POINTER_ARRAY\\n");\n'
+            f'    fprintf(f, "COUNT:{capture.size}\\n");\n'
+            f"{textwrap.indent(chr(10).join(children), '    ')}\n"
+            f"}}"
+        )
+
+    raise ValueError(f"unknown capture type: {capture.kind}")
+
+
+def parse_capture(lines):
+    lines = iter(lines)
+
+    def parse_node(line):
+        if line == "NULL":
+            return CaptureResult("null")
+
+        if line.startswith("BUFFER:"):
+            _, size, data = line.split(":", 2)
+
+            return CaptureResult(
+                "buffer",
+                data=bytes.fromhex(data),
+            )
+
+        if line.startswith("POINTER:"):
+            value = line.removeprefix("POINTER:")
+
+            if value == "NULL":
+                return CaptureResult(
+                    "pointer_raw",
+                    data=None,
+                )
+
+            return CaptureResult(
+                "pointer_raw",
+                data=value,
+            )
+
+        if line == "POINTER_ARRAY":
+            count_line = next(lines)
+            count = int(count_line.removeprefix("COUNT:"))
+
+            children = [parse_node(next(lines)) for _ in range(count)]
+
+            return CaptureResult(
+                "pointer_array",
+                children=children,
+                count=count,
+            )
+
+        raise RuntimeError(f"unknown capture record: {line}")
+
+    return parse_node(next(lines))
+
+
 def generate_harness(
     function: CFunction,
     arguments,
     buffer_outputs: dict[str, Path],
-    return_buffer_output: Path | None = None,
-    return_buffer_size: int | None = None,
+    capture_output: Path | None = None,
+    capture: Capture | None = None,
     malloc_fail_at: int | None = None,
 ):
     argument_types = ", ".join(
@@ -520,13 +820,21 @@ def generate_harness(
 
     output = function.return_type.generate_output("result")
 
-    return_buffer_write = ""
+    capture_write = ""
 
-    if return_buffer_output is not None:
-        return_buffer_write = (
-            f"if (result != NULL) {{ "
-            f'FILE *f = fopen("{return_buffer_output}", "wb"); '
-            f"fwrite(result, 1, {return_buffer_size}, f); "
+    if capture_output is not None:
+        if capture is None:
+            raise ValueError("capture output requires a capture specification")
+
+        capture_code = generate_capture(
+            capture,
+            "result",
+        )
+
+        capture_write = (
+            f'{{ FILE *f = fopen("{capture_output}", "w"); '
+            f"if (f == NULL) return 1; "
+            f"{capture_code}; "
             f"fclose(f); }}"
         )
 
@@ -571,7 +879,7 @@ int main(void)
 
     {buffer_writes}
 
-    {return_buffer_write}
+    {capture_write}
 
     {output}
 
@@ -700,17 +1008,17 @@ class CContext:
                 buffer.name: temp_dir / f"{buffer.name}.bin" for buffer in buffers
             }
 
-            return_buffer_output = None
+            capture_output = None
 
-            if call_result._return_buffer_size is not None:
-                return_buffer_output = temp_dir / "return.bin"
+            if call_result._return_capture is not None:
+                capture_output = temp_dir / "capture.txt"
 
             source = generate_harness(
                 function,
                 arguments,
                 buffer_outputs,
-                return_buffer_output=return_buffer_output,
-                return_buffer_size=call_result._return_buffer_size,
+                capture_output=capture_output,
+                capture=call_result._return_capture,
                 malloc_fail_at=self.malloc.fail_at_index,
             )
 
@@ -852,8 +1160,17 @@ class CContext:
             call_result.malloc_count = malloc_count
             call_result.malloc_sizes = malloc_sizes
 
-            if return_buffer_output is not None:
-                if return_buffer_output.exists():
-                    call_result.return_buffer = return_buffer_output.read_bytes()
+            if capture_output is not None:
+                if not capture_output.exists():
+                    raise RuntimeError("C test harness did not produce return capture")
+
+                capture_lines = capture_output.read_text().splitlines()
+
+                if not capture_lines:
+                    raise RuntimeError(
+                        "C test harness produced an empty return capture"
+                    )
+
+                call_result.return_capture = parse_capture(capture_lines)
 
             return call_result
