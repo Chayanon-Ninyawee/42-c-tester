@@ -13,6 +13,9 @@ from .utils import format_buffer_diff, run_debug_process
 MALLOC_STRIKE_DIR = Path(__file__).with_name("malloc_strike")
 MALLOC_STRIKE_SOURCE = MALLOC_STRIKE_DIR / "malloc_strike.c"
 MALLOC_STRIKE_HEADER = MALLOC_STRIKE_DIR / "malloc_strike.h"
+MALLOC_STRIKE_POISON = b"\xaa"
+
+PROTOCOL_FD = 39
 
 
 class CBuffer:
@@ -941,6 +944,7 @@ def generate_harness(
     function: CFunction,
     arguments,
     buffer_outputs: dict[str, Path],
+    protocol_output: Path,
     capture_output: Path | None = None,
     capture: Capture | None = None,
     malloc_fail_at: int | None = None,
@@ -990,7 +994,7 @@ def generate_harness(
     buffer_declarations = "\n    ".join(buffer.generate() for buffer in buffers)
 
     buffer_pointers = "\n    ".join(
-        f'printf("BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
+        f'dprintf({PROTOCOL_FD}, "BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
         for buffer in buffers
     )
 
@@ -1010,7 +1014,7 @@ def generate_harness(
         argument_values,
     )
 
-    output = function.return_type.generate_output("result")
+    output = function.return_type.generate_output("result", fd=PROTOCOL_FD)
 
     capture_write = ""
     cleanup_write = ""
@@ -1041,6 +1045,20 @@ def generate_harness(
 
     headers = "\n".join(f"#include <{header}>" for header in function.headers)
 
+    protocol_setup = f"""
+        {{
+            FILE *protocol_file = fopen("{protocol_output}", "w");
+    
+            if (protocol_file == NULL)
+                return 1;
+    
+            if (dup2(fileno(protocol_file), {PROTOCOL_FD}) == -1)
+                return 1;
+    
+            fclose(protocol_file);
+        }}
+    """
+
     declaration = ""
 
     if not function.headers:
@@ -1053,15 +1071,16 @@ def generate_harness(
     if malloc_fail_at is not None:
         malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
 
-    malloc_output = """printf("MALLOC_COUNT:%zu\\n", malloc_strike_count());
-
+    malloc_output = f"""dprintf({PROTOCOL_FD}, "MALLOC_COUNT:%zu\\n", malloc_strike_count());
+    
     for (size_t i = 0; i < malloc_strike_count(); i++)
-        printf("MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));"""
+        dprintf({PROTOCOL_FD}, "MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));"""
 
     return f"""
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "malloc_strike.h"
 {headers}
 
@@ -1071,6 +1090,8 @@ def generate_harness(
 
 int main(void)
 {{
+    {protocol_setup}
+
     {buffer_declarations}
 
     {buffer_pointers}
@@ -1267,6 +1288,8 @@ class CContext:
         with tempfile.TemporaryDirectory(prefix="test-42-c-call-") as temp:
             temp_dir = Path(temp)
 
+            protocol_output = temp_dir / "protocol.txt"
+
             buffer_outputs = {
                 buffer.name: temp_dir / f"{buffer.name}.bin" for buffer in buffers
             }
@@ -1280,6 +1303,7 @@ class CContext:
                 function,
                 arguments,
                 buffer_outputs,
+                protocol_output=protocol_output,
                 capture_output=capture_output,
                 capture=call_result._return_capture,
                 malloc_fail_at=self.malloc.fail_at_index,
@@ -1405,7 +1429,10 @@ class CContext:
                 if path.exists():
                     captured_buffers[buffer.name] = path.read_bytes()
 
-            output = result.stdout.decode(errors="replace").splitlines()
+            if not protocol_output.exists():
+                raise RuntimeError("C test harness did not produce protocol output")
+
+            output = protocol_output.read_text().splitlines()
 
             pointer_values = {}
 

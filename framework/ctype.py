@@ -45,7 +45,7 @@ class CType(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate_output(self, expression: str) -> str:
+    def generate_output(self, expression: str, fd=1) -> str:
         raise NotImplementedError
 
     @abstractmethod
@@ -75,8 +75,8 @@ class VoidType(CType):
     ) -> str:
         return f"{function_name}({arguments});"
 
-    def generate_output(self, expression: str) -> str:
-        return 'printf("RETURN:VOID\\n");'
+    def generate_output(self, expression: str, fd=1) -> str:
+        return f'dprintf({fd}, "RETURN:VOID\\n");'
 
     def parse(self, value: str):
         return None
@@ -116,10 +116,10 @@ class IntegerType(CType):
     ) -> str:
         return f"{self.declaration} result = " f"{function_name}({arguments});"
 
-    def generate_output(self, expression: str) -> str:
+    def generate_output(self, expression: str, fd=1) -> str:
         fmt = self.FORMATS[self.declaration]
 
-        return f'printf("RETURN:{fmt}\\n", {expression});'
+        return f'dprintf({fd}, "RETURN:{fmt}\\n", {expression});'
 
     def parse(self, value: str):
         return int(value)
@@ -140,12 +140,12 @@ class PointerType(CType):
     ) -> str:
         return f"{self.declaration} result = " f"{function_name}({arguments});"
 
-    def generate_output(self, expression: str) -> str:
+    def generate_output(self, expression: str, fd=1) -> str:
         return (
             f"if ({expression} == NULL) "
-            f'printf("RETURN:NULL\\n"); '
+            f'dprintf({fd}, "RETURN:NULL\\n"); '
             f"else "
-            f'printf("RETURN:%p\\n", (void *){expression});'
+            f'dprintf({fd}, "RETURN:%p\\n", (void *){expression});'
         )
 
     def parse(self, value: str):
