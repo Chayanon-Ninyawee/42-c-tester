@@ -285,6 +285,14 @@ project = Project(
                     "char (*)(unsigned int, char)",
                 ],
             ),
+            # ft_striteri
+            "ft_striteri": FunctionDefinition(
+                returns="void",
+                args=[
+                    "char *",
+                    "void (*)(unsigned int, char *)",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -323,5 +331,6 @@ project = Project(
         "ft_split",
         "ft_itoa",
         "ft_strmapi",
+        "ft_striteri",
     ],
 )
