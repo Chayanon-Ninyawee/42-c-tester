@@ -1,10 +1,11 @@
+import re
 import subprocess
 import tempfile
 import textwrap
 from pathlib import Path
 
 from .color import Color, color
-from .ctype import CType, PointerType, parse_ctype
+from .ctype import PointerType, parse_ctype
 from .project import FunctionConfig, Project
 from .result import AssertionFailure, UnexpectedResult
 from .utils import format_buffer_diff, run_debug_process
@@ -84,6 +85,65 @@ def get_buffer(argument):
         return argument.buffer
 
     return None
+
+
+class CCallback:
+    def __init__(
+        self,
+        context,
+        name: str,
+        returns: str,
+        args: list[tuple[str, str]],
+        body: str,
+    ):
+        if not name.isidentifier():
+            raise ValueError(f"callback name must be a valid C identifier: {name!r}")
+
+        if not args:
+            args = []
+
+        for argument in args:
+            if not isinstance(argument, tuple) or len(argument) != 2:
+                raise TypeError("callback arguments must be (type, name) tuples")
+
+            argument_type, argument_name = argument
+
+            if not isinstance(argument_type, str):
+                raise TypeError("callback argument type must be a string")
+
+            if not isinstance(argument_name, str):
+                raise TypeError("callback argument name must be a string")
+
+            if not argument_name.isidentifier():
+                raise ValueError(
+                    f"callback argument name must be a valid "
+                    f"C identifier: {argument_name!r}"
+                )
+
+        self.context = context
+        self.name = name
+        self.returns = returns
+        self.args = args
+        self.body = body
+
+    def generate(self):
+        arguments = ", ".join(
+            f"{argument_type} {argument_name}"
+            for argument_type, argument_name in self.args
+        )
+
+        if not arguments:
+            arguments = "void"
+
+        body = textwrap.indent(
+            self.body.strip(),
+            "    ",
+        )
+
+        return f"static {self.returns} {self.name}({arguments})\n" "{\n" f"{body}\n" "}"
+
+    def __repr__(self):
+        return self.name
 
 
 class Capture:
@@ -203,6 +263,41 @@ class Assert:
         return self
 
 
+class FunctionPointerType:
+    def __init__(self, returns, args):
+        self.returns = returns
+        self.args = args
+
+    @property
+    def declaration(self):
+        arguments = ", ".join(self.args)
+
+        if not arguments:
+            arguments = "void"
+
+        return f"{self.returns} (*)({arguments})"
+
+
+def parse_function_pointer_type(type_string):
+    match = re.fullmatch(
+        r"\s*(.+?)\s*\(\s*\*\s*\)\s*\((.*)\)\s*",
+        type_string,
+    )
+
+    if match is None:
+        return None
+
+    returns = match.group(1).strip()
+    args = match.group(2).strip()
+
+    if not args or args == "void":
+        arguments = []
+    else:
+        arguments = [argument.strip() for argument in args.split(",")]
+
+    return returns, arguments
+
+
 class CFunction:
     def __init__(
         self,
@@ -218,13 +313,29 @@ class CFunction:
         self.name = name
 
         self.return_type = parse_ctype(returns)
-        self.arg_types = [parse_ctype(arg) for arg in (args or [])]
+
+        self.arg_types = []
+
+        for arg in args or []:
+            function_pointer = parse_function_pointer_type(arg)
+
+            if function_pointer is not None:
+                returns_type, callback_args = function_pointer
+
+                self.arg_types.append(
+                    FunctionPointerType(
+                        returns_type,
+                        callback_args,
+                    )
+                )
+            else:
+                self.arg_types.append(parse_ctype(arg))
 
         self.headers = headers or []
         self.link = link or []
         self.err_flags = err_flags
 
-    def __call__(self, *arguments: str):
+    def __call__(self, *arguments):
         return self.context.call(
             self,
             *arguments,
@@ -674,6 +785,9 @@ def generate_argument(argument):
     if isinstance(argument, CBufferOffset):
         return f"{argument.buffer.name} + {argument.offset}"
 
+    if isinstance(argument, CCallback):
+        return argument.name
+
     return str(argument)
 
 
@@ -743,10 +857,18 @@ def parse_capture(lines):
 
         if line.startswith("BUFFER:"):
             _, size, data = line.split(":", 2)
+            size = int(size)
+            data = bytes.fromhex(data)
+
+            if len(data) != size:
+                raise RuntimeError(
+                    f"buffer capture size mismatch: "
+                    f"declared {size}, received {len(data)}"
+                )
 
             return CaptureResult(
                 "buffer",
-                data=bytes.fromhex(data),
+                data=data,
             )
 
         if line.startswith("POINTER:"):
@@ -765,7 +887,16 @@ def parse_capture(lines):
 
         if line == "POINTER_ARRAY":
             count_line = next(lines)
+
+            if not count_line.startswith("COUNT:"):
+                raise RuntimeError(
+                    f"expected pointer array count, received: {count_line}"
+                )
+
             count = int(count_line.removeprefix("COUNT:"))
+
+            if count < 0:
+                raise RuntimeError("pointer array count cannot be negative")
 
             children = [parse_node(next(lines)) for _ in range(count)]
 
@@ -814,6 +945,37 @@ def generate_harness(
     capture: Capture | None = None,
     malloc_fail_at: int | None = None,
 ):
+    callbacks = [argument for argument in arguments if isinstance(argument, CCallback)]
+
+    callback_names = set()
+
+    reserved_names = {
+        "result",
+        *(
+            buffer.name
+            for argument in arguments
+            if (buffer := get_buffer(argument)) is not None
+        ),
+    }
+
+    for callback in callbacks:
+        if callback.name in callback_names:
+            raise ValueError(f"duplicate callback name: {callback.name!r}")
+
+        if callback.name in reserved_names:
+            raise ValueError(
+                f"callback name conflicts with harness name: " f"{callback.name!r}"
+            )
+
+        callback_names.add(callback.name)
+
+    if function.name in callback_names:
+        raise ValueError(
+            f"callback name conflicts with function name: {function.name!r}"
+        )
+
+    callback_definitions = "\n\n".join(callback.generate() for callback in callbacks)
+
     argument_types = ", ".join(
         argument_type.declaration for argument_type in function.arg_types
     )
@@ -902,6 +1064,8 @@ def generate_harness(
 #include <stdlib.h>
 #include "malloc_strike.h"
 {headers}
+
+{callback_definitions}
 
 {declaration}
 
@@ -1003,6 +1167,22 @@ class CContext:
             type=type,
         )
 
+    def callback(
+        self,
+        *,
+        name: str,
+        returns: str,
+        args: list[tuple[str, str]] | None = None,
+        body: str,
+    ):
+        return CCallback(
+            context=self,
+            name=name,
+            returns=returns,
+            args=args or [],
+            body=body,
+        )
+
     def call(
         self,
         function: CFunction | str,
@@ -1020,6 +1200,42 @@ class CContext:
                 f"{len(function.arg_types)} arguments, "
                 f"got {len(arguments)}"
             )
+
+        for index, (argument, argument_type) in enumerate(
+            zip(arguments, function.arg_types)
+        ):
+            if isinstance(argument_type, FunctionPointerType):
+                if not isinstance(argument, CCallback):
+                    raise TypeError(
+                        f"argument {index} of {function.name} expects " f"a callback"
+                    )
+
+                if argument.returns != argument_type.returns:
+                    raise TypeError(
+                        f"callback {argument.name!r} returns "
+                        f"{argument.returns!r}, expected "
+                        f"{argument_type.returns!r}"
+                    )
+
+                if len(argument.args) != len(argument_type.args):
+                    raise TypeError(
+                        f"callback {argument.name!r} expects "
+                        f"{len(argument_type.args)} arguments, got "
+                        f"{len(argument.args)}"
+                    )
+
+                for callback_arg, expected_arg in zip(
+                    argument.args,
+                    argument_type.args,
+                ):
+                    actual_type, _ = callback_arg
+
+                    if actual_type != expected_arg:
+                        raise TypeError(
+                            f"callback {argument.name!r} argument type "
+                            f"{actual_type!r} does not match expected "
+                            f"{expected_arg!r}"
+                        )
 
         return CCallResult(
             context=self,
