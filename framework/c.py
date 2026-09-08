@@ -90,6 +90,23 @@ def get_buffer(argument):
     return None
 
 
+class CFileDescriptor:
+    def __init__(self, context, fd: int):
+        if fd < 3:
+            raise ValueError("custom file descriptor must be >= 3")
+
+        if fd == PROTOCOL_FD:
+            raise ValueError(
+                f"file descriptor {PROTOCOL_FD} is reserved for the framework"
+            )
+
+        self.context = context
+        self.fd = fd
+
+    def __repr__(self):
+        return f"fd({self.fd})"
+
+
 class CCallback:
     def __init__(
         self,
@@ -362,6 +379,7 @@ class CCallResult:
         self.return_type = function.return_type
         self.stdout = b""
         self.stderr = b""
+        self.fd_outputs = {}
         self.returncode = None
 
         self.buffers = {}
@@ -536,6 +554,96 @@ class CCallResult:
                 f"{prefix}unexpected return value\n"
                 f"  expected anything except: {expected!r}\n"
                 f"  received: {actual!r}"
+            )
+
+        return self
+
+    def stdout_equals(
+        self,
+        expected: bytes,
+        message: str | None = None,
+    ):
+        self._require_run()
+
+        if not isinstance(expected, bytes):
+            raise TypeError("stdout assertion expects bytes")
+
+        if self.stdout != expected:
+            prefix = f"{message}: " if message else ""
+
+            diff = format_buffer_diff(
+                expected,
+                self.stdout,
+            )
+
+            self.failures.append(
+                f"{prefix}stdout mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {self.stdout!r}"
+                f"{diff}"
+            )
+
+        return self
+
+    def stderr_equals(
+        self,
+        expected: bytes,
+        message: str | None = None,
+    ):
+        self._require_run()
+
+        if not isinstance(expected, bytes):
+            raise TypeError("stderr assertion expects bytes")
+
+        if self.stderr != expected:
+            prefix = f"{message}: " if message else ""
+
+            diff = format_buffer_diff(
+                expected,
+                self.stderr,
+            )
+
+            self.failures.append(
+                f"{prefix}stderr mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {self.stderr!r}"
+                f"{diff}"
+            )
+
+        return self
+
+    def fd_equals(
+        self,
+        fd: CFileDescriptor,
+        expected: bytes,
+        message: str | None = None,
+    ):
+        self._require_run()
+
+        if not isinstance(fd, CFileDescriptor):
+            raise TypeError("fd assertion expects a CFileDescriptor")
+
+        if not isinstance(expected, bytes):
+            raise TypeError("fd assertion expects bytes")
+
+        if fd.fd not in self.fd_outputs:
+            raise RuntimeError(f"file descriptor {fd.fd} was not captured")
+
+        actual = self.fd_outputs[fd.fd]
+
+        if actual != expected:
+            prefix = f"{message}: " if message else ""
+
+            diff = format_buffer_diff(
+                expected,
+                actual,
+            )
+
+            self.failures.append(
+                f"{prefix}fd {fd.fd} mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {actual!r}"
+                f"{diff}"
             )
 
         return self
@@ -791,6 +899,9 @@ def generate_argument(argument):
     if isinstance(argument, CCallback):
         return argument.name
 
+    if isinstance(argument, CFileDescriptor):
+        return str(argument.fd)
+
     return str(argument)
 
 
@@ -945,6 +1056,7 @@ def generate_harness(
     arguments,
     buffer_outputs: dict[str, Path],
     protocol_output: Path,
+    fd_outputs: dict[int, Path],
     capture_output: Path | None = None,
     capture: Capture | None = None,
     malloc_fail_at: int | None = None,
@@ -1059,6 +1171,16 @@ def generate_harness(
         }}
     """
 
+    fd_setup = "\n    ".join(
+        (
+            f'{{ int fd = open("{path}", O_WRONLY | O_CREAT | O_TRUNC, 0600); '
+            f"if (fd == -1) return 1; "
+            f"if (dup2(fd, {fd_number}) == -1) return 1; "
+            f"if (fd != {fd_number}) close(fd); }}"
+        )
+        for fd_number, path in fd_outputs.items()
+    )
+
     declaration = ""
 
     if not function.headers:
@@ -1081,6 +1203,7 @@ def generate_harness(
 #include <stddef.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "malloc_strike.h"
 {headers}
 
@@ -1091,6 +1214,8 @@ def generate_harness(
 int main(void)
 {{
     {protocol_setup}
+
+    {fd_setup}
 
     {buffer_declarations}
 
@@ -1131,6 +1256,7 @@ class CContext:
         self._asan_built = False
         self._functions = {}
         self.malloc = MallocController(self)
+        self._next_fd = 3
 
     def function(
         self,
@@ -1187,6 +1313,19 @@ class CContext:
             name=name,
             type=type,
         )
+
+    def fd(self):
+        while self._next_fd == PROTOCOL_FD:
+            self._next_fd += 1
+
+        fd = CFileDescriptor(
+            self,
+            self._next_fd,
+        )
+
+        self._next_fd += 1
+
+        return fd
 
     def callback(
         self,
@@ -1290,6 +1429,12 @@ class CContext:
 
             protocol_output = temp_dir / "protocol.txt"
 
+            fd_outputs = {
+                argument.fd: temp_dir / f"fd-{argument.fd}.bin"
+                for argument in arguments
+                if isinstance(argument, CFileDescriptor)
+            }
+
             buffer_outputs = {
                 buffer.name: temp_dir / f"{buffer.name}.bin" for buffer in buffers
             }
@@ -1304,6 +1449,7 @@ class CContext:
                 arguments,
                 buffer_outputs,
                 protocol_output=protocol_output,
+                fd_outputs=fd_outputs,
                 capture_output=capture_output,
                 capture=call_result._return_capture,
                 malloc_fail_at=self.malloc.fail_at_index,
@@ -1434,6 +1580,12 @@ class CContext:
 
             output = protocol_output.read_text().splitlines()
 
+            captured_fds = {}
+
+            for fd, path in fd_outputs.items():
+                if path.exists():
+                    captured_fds[fd] = path.read_bytes()
+
             pointer_values = {}
 
             for line in output:
@@ -1462,6 +1614,7 @@ class CContext:
             call_result.value = value
             call_result.stdout = result.stdout
             call_result.stderr = result.stderr
+            call_result.fd_outputs = captured_fds
             call_result.returncode = result.returncode
             call_result.buffers = captured_buffers
             call_result.pointer_values = pointer_values

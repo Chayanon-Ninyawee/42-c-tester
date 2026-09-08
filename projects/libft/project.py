@@ -293,6 +293,38 @@ project = Project(
                     "void (*)(unsigned int, char *)",
                 ],
             ),
+            # ft_putchar_fd
+            "ft_putchar_fd": FunctionDefinition(
+                returns="void",
+                args=[
+                    "char",
+                    "int",
+                ],
+            ),
+            # ft_putstr_fd
+            "ft_putstr_fd": FunctionDefinition(
+                returns="void",
+                args=[
+                    "char *",
+                    "int",
+                ],
+            ),
+            # ft_putendl_fd
+            "ft_putendl_fd": FunctionDefinition(
+                returns="void",
+                args=[
+                    "char *",
+                    "int",
+                ],
+            ),
+            # ft_putnbr_fd
+            "ft_putnbr_fd": FunctionDefinition(
+                returns="void",
+                args=[
+                    "int",
+                    "int",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -332,5 +364,9 @@ project = Project(
         "ft_itoa",
         "ft_strmapi",
         "ft_striteri",
+        "ft_putchar_fd",
+        "ft_putstr_fd",
+        "ft_putendl_fd",
+        "ft_putnbr_fd",
     ],
 )
