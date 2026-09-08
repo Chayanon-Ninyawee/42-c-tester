@@ -56,7 +56,6 @@ ______________________________________________________________________
 - [Compiler Flags](#compiler-flags)
 - [Libraries](#libraries)
 - [Build Configuration](#build-configuration)
-- [Makefile Requirements](#makefile-requirements)
 - [AddressSanitizer](#addresssanitizer)
 - [Debug Mode](#debug-mode)
 - [Test Lifecycle](#test-lifecycle)
@@ -980,60 +979,6 @@ BuildConfig(
     sources=[],
     output="a.out",
 )
-```
-
-The current ASan build implementation supports **Makefiles only**.
-
-______________________________________________________________________
-
-# Makefile Requirements
-
-If a project uses a Makefile, the Makefile **must use the `CFLAGS` variable** when compiling C files.
-
-For example:
-
-```make
-CC = cc
-CFLAGS = -Wall -Wextra -Werror
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-```
-
-Do **not** hard-code the compiler flags:
-
-```make
-%.o: %.c
-	cc -Wall -Wextra -Werror -c $< -o $@
-```
-
-The reason is that AddressSanitizer builds override `CFLAGS` by invoking:
-
-```bash
-make -B CFLAGS="..."
-```
-
-The framework adds:
-
-```text
--fsanitize=address
--fno-omit-frame-pointer
-```
-
-to the project's configured build flags.
-
-Therefore, a Makefile that ignores `$(CFLAGS)` will not be rebuilt correctly with AddressSanitizer.
-
-The variable name must be exactly:
-
-```text
-CFLAGS
-```
-
-not:
-
-```text
-CFLAG
 ```
 
 ______________________________________________________________________

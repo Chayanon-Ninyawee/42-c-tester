@@ -1251,57 +1251,7 @@ class CContext:
             executable,
         )
 
-    def _build_asan(self):
-        if not self.asan or self._asan_built:
-            return
-
-        build = self.project.build
-
-        if build.method != "make":
-            raise RuntimeError("ASan testing currently requires a make build")
-
-        flags = [
-            *build.flags,
-            "-fsanitize=address",
-            "-fno-omit-frame-pointer",
-        ]
-
-        command = [
-            "make",
-            "-B",
-            f"CFLAGS={' '.join(flags)}",
-        ]
-
-        if build.target is not None:
-            command.append(build.target)
-
-        if self.debug:
-            print()
-            print(color("  [DEBUG] Building project with ASan", Color.CYAN))
-            print(
-                color(
-                    "  " + " ".join(command),
-                    Color.YELLOW,
-                )
-            )
-
-        result = subprocess.run(
-            command,
-            cwd=self.project_dir,
-            capture_output=True,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                "failed to build project with ASan:\n"
-                + result.stderr.decode(errors="replace")
-            )
-
-        self._asan_built = True
-
     def _execute(self, call_result: CCallResult):
-        self._build_asan()
-
         function = call_result.function
         arguments = call_result.arguments
         malloc_fail_at = self.malloc.fail_at_index
@@ -1356,6 +1306,7 @@ class CContext:
                 "cc",
                 "-Wall",
                 "-Wextra",
+                "-g",
             ]
 
             if self.asan:
