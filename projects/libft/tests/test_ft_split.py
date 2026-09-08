@@ -138,20 +138,16 @@ def test_malloc_failures(c, original, delimiter, expected):
             delimiter,
         )
 
-        # On allocation failure, ft_split should return NULL.
-        ft.capture_return(Capture.pointer_raw())
-
+        # Expect pointer to be null so no need to free, and no need to read what inside
         ft.run()
 
+        ft.is_null(
+            f"malloc failure at call {fail_at}",
+        )
         ft.buffer_equals(
             ft_s,
             original,
             "Source buffer was modified",
-        )
-
-        ft.assert_return(
-            Assert.is_null_pointer(f"malloc failure at call {fail_at}"),
-            f"malloc failure at call {fail_at}",
         )
 
         ft.assert_now()

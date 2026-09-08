@@ -270,6 +270,13 @@ project = Project(
                     "char",
                 ],
             ),
+            # ft_itoa
+            "ft_itoa": FunctionDefinition(
+                returns="char *",
+                args=[
+                    "int",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -306,5 +313,6 @@ project = Project(
         "ft_strjoin",
         "ft_strtrim",
         "ft_split",
+        "ft_itoa",
     ],
 )
