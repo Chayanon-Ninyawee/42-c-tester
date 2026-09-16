@@ -325,11 +325,11 @@ project = Project(
                     "int",
                 ],
             ),
-            "test_pointer": FunctionDefinition(
-                returns="void",
-                args=[
-                    "int *",
-                ],
+            # ft_lstnew
+            "ft_lstnew": FunctionDefinition(
+                returns="t_list *",
+                args=["void *"],
+                headers=["libft.h"],
             ),
         },
         link=[
@@ -374,6 +374,6 @@ project = Project(
         "ft_putstr_fd",
         "ft_putendl_fd",
         "ft_putnbr_fd",
-        "test_pointer",
+        "ft_lstnew",
     ],
 )

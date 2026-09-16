@@ -113,19 +113,78 @@ class CVariable:
         return f"variable({self.name})"
 
     def generate(self):
+        value = None
+
+        if self.value is not None:
+            value = generate_argument(self.value)
+
         return self.type.generate_declaration(
             self.name,
-            self.value,
+            value,
         )
 
     def pointer(self):
-        return CVariablePointer(self)
+        return CPointer(self)
 
 
-class CVariablePointer:
-    def __init__(self, variable: CVariable):
-        if not isinstance(variable, CVariable):
-            raise TypeError("variable pointer requires a CVariable")
+class CStruct:
+    def __init__(
+        self,
+        context,
+        type: str,
+        fields: dict[str, object],
+        name: str = "structure",
+    ):
+        if not isinstance(type, str):
+            raise TypeError("struct type must be a string")
+
+        if not name.isidentifier():
+            raise ValueError(
+                f"struct variable name must be a valid C identifier: {name!r}"
+            )
+
+        if not isinstance(fields, dict):
+            raise TypeError("struct fields must be a dictionary")
+
+        for field_name in fields:
+            if not isinstance(field_name, str):
+                raise TypeError("struct field names must be strings")
+
+            if not field_name.isidentifier():
+                raise ValueError(
+                    f"struct field name must be a valid "
+                    f"C identifier: {field_name!r}"
+                )
+
+        self.context = context
+        self.type = type.strip()
+        self.fields = fields
+        self.name = name
+
+    def __repr__(self):
+        return f"struct({self.name})"
+
+    def generate(self):
+        if not self.fields:
+            return f"{self.type} {self.name} = {{}};"
+
+        values = []
+
+        for field, value in self.fields.items():
+            values.append(f".{field} = {generate_argument(value)}")
+
+        initializer = ", ".join(values)
+
+        return f"{self.type} {self.name} = {{ {initializer} }};"
+
+    def pointer(self):
+        return CPointer(self)
+
+
+class CPointer:
+    def __init__(self, variable):
+        if not isinstance(variable, (CVariable, CStruct)):
+            raise TypeError("pointer requires a CVariable or CStruct")
 
         self.variable = variable
 
@@ -207,16 +266,27 @@ class CCallback:
             "    ",
         )
 
-        return f"static {self.returns} {self.name}({arguments})\n" "{\n" f"{body}\n" "}"
+        return (
+            f"static {self.returns} {self.name}({arguments})\n"
+            "{\n"
+            f"{body}\n"
+            "}"
+        )
 
     def __repr__(self):
         return self.name
 
 
 class Capture:
-    def __init__(self, kind, size=None):
+    def __init__(
+        self,
+        kind,
+        size=None,
+        fields=None,
+    ):
         self.kind = kind
         self.size = size
+        self.fields = fields or {}
         self.children = []
 
     @classmethod
@@ -237,11 +307,37 @@ class Capture:
 
         return cls("pointer_array", size)
 
+    @classmethod
+    def struct(cls, fields):
+        if not isinstance(fields, dict):
+            raise TypeError("struct capture fields must be a dictionary")
+
+        for field_name, capture in fields.items():
+            if not isinstance(field_name, str):
+                raise TypeError("struct capture field names must be strings")
+
+            if not field_name.isidentifier():
+                raise ValueError(
+                    f"struct capture field name must be a valid "
+                    f"C identifier: {field_name!r}"
+                )
+
+            if not isinstance(capture, Capture):
+                raise TypeError(
+                    f"struct capture field {field_name!r} "
+                    "must be a Capture"
+                )
+
+        return cls(
+            "struct",
+            fields=fields,
+        )
+
     def child(self, capture):
         if not isinstance(capture, Capture):
             raise TypeError("capture child must be a Capture")
 
-        if self.kind in ("buffer", "pointer_raw"):
+        if self.kind in ("buffer", "pointer_raw", "struct"):
             raise TypeError(f"{self.kind} captures cannot have children")
 
         if self.kind == "pointer_array":
@@ -260,11 +356,13 @@ class CaptureResult:
         data=None,
         children=None,
         count=None,
+        fields=None,
     ):
         self.kind = kind
         self.data = data
         self.children = children or []
         self.count = count
+        self.fields = fields or {}
 
     @property
     def is_null(self):
@@ -280,7 +378,13 @@ class CaptureResult:
         if self.kind == "null":
             return "CaptureResult.null()"
 
-        return f"CaptureResult.{self.kind}" f"({len(self.children)} children)"
+        if self.kind == "struct":
+            return (
+                "CaptureResult.struct("
+                f"{len(self.fields)} fields)"
+            )
+
+        return f"CaptureResult.{self.kind}({len(self.children)} children)"
 
 
 class Assert:
@@ -294,6 +398,7 @@ class Assert:
         self.expected = expected
         self.message = message
         self.children = []
+        self.fields = {}
 
     @classmethod
     def buffer_equals(cls, expected, message=None):
@@ -304,6 +409,15 @@ class Assert:
 
     @classmethod
     def pointer_equals(cls, expected, message=None):
+        if not isinstance(
+            expected,
+            (CBuffer, CBufferOffset, CVariable, CStruct, str),
+        ):
+            raise TypeError(
+                "pointer assertion expects a CBuffer, "
+                "CBufferOffset, CVariable, CStruct, or pointer string"
+            )
+
         return cls("pointer_raw", expected, message)
 
     @classmethod
@@ -318,11 +432,41 @@ class Assert:
     def pointer_array(cls, message=None):
         return cls("pointer_array", message=message)
 
+    @classmethod
+    def struct(cls, fields, message=None):
+        if not isinstance(fields, dict):
+            raise TypeError("struct assertion fields must be a dictionary")
+
+        for field_name, assertion in fields.items():
+            if not isinstance(field_name, str):
+                raise TypeError("struct assertion field names must be strings")
+
+            if not field_name.isidentifier():
+                raise ValueError(
+                    f"struct assertion field name must be a valid "
+                    f"C identifier: {field_name!r}"
+                )
+
+            if not isinstance(assertion, Assert):
+                raise TypeError(
+                    f"struct assertion field {field_name!r} "
+                    "must be an Assert"
+                )
+
+        result = cls(
+            "struct",
+            message=message,
+        )
+
+        result.fields = fields
+
+        return result
+
     def child(self, assertion):
         if not isinstance(assertion, Assert):
             raise TypeError("assertion child must be an Assert")
 
-        if self.kind in ("buffer", "pointer_raw"):
+        if self.kind in ("buffer", "pointer_raw", "struct"):
             raise TypeError(f"{self.kind} assertions cannot have children")
 
         self.children.append(assertion)
@@ -468,8 +612,37 @@ class CCallResult:
     def _require_run(self):
         if not self.executed:
             raise RuntimeError(
-                f"{self.function.name} has not been executed; " "call .run() first"
+                f"{self.function.name} has not been executed; "
+                "call .run() first"
             )
+
+    def _resolve_pointer(self, expected):
+        if expected is None:
+            return None
+
+        if isinstance(expected, CBufferOffset):
+            base = self.pointer_values.get(expected.buffer.name)
+
+            if base is None:
+                raise RuntimeError(
+                    f"buffer '{expected.buffer.name}' pointer "
+                    "was not captured"
+                )
+
+            return hex(int(base, 16) + expected.offset)
+
+        if isinstance(expected, (CBuffer, CVariable, CStruct)):
+            pointer = self.pointer_values.get(expected.name)
+
+            if pointer is None:
+                raise RuntimeError(
+                    f"pointer for '{expected.name}' "
+                    "was not captured"
+                )
+
+            return pointer
+
+        return expected
 
     def _assert_capture(
         self,
@@ -509,18 +682,23 @@ class CCallResult:
 
         if assertion.kind == "pointer_raw":
             if actual.kind != "pointer_raw":
-                fail("expected raw pointer, " f"received {actual.kind}")
+                fail(
+                    "expected raw pointer, "
+                    f"received {actual.kind}"
+                )
                 return
+
+            expected = self._resolve_pointer(assertion.expected)
 
             if assertion.expected == "NOT_NULL":
                 if actual.data is None:
                     fail("expected non-NULL pointer")
                 return
 
-            if actual.data != assertion.expected:
+            if actual.data != expected:
                 fail(
                     "pointer mismatch\n"
-                    f"  expected: {assertion.expected!r}\n"
+                    f"  expected: {expected!r}\n"
                     f"  received: {actual.data!r}"
                 )
 
@@ -528,7 +706,10 @@ class CCallResult:
 
         if assertion.kind == "pointer_array":
             if actual.kind != "pointer_array":
-                fail("expected pointer array, " f"received {actual.kind}")
+                fail(
+                    "expected pointer array, "
+                    f"received {actual.kind}"
+                )
                 return
 
             if len(actual.children) != len(assertion.children):
@@ -552,6 +733,46 @@ class CCallResult:
 
             return
 
+        if assertion.kind == "struct":
+            if actual.kind == "null":
+                fail("expected struct, received NULL")
+                return
+
+            if actual.kind != "struct":
+                fail(f"expected struct, received {actual.kind}")
+                return
+
+            expected_fields = assertion.fields
+            actual_fields = actual.fields
+
+            if set(actual_fields) != set(expected_fields):
+                missing = set(expected_fields) - set(actual_fields)
+                unexpected = set(actual_fields) - set(expected_fields)
+
+                if missing:
+                    fail(
+                        "struct missing fields: "
+                        + ", ".join(sorted(missing))
+                    )
+
+                if unexpected:
+                    fail(
+                        "struct has unexpected fields: "
+                        + ", ".join(sorted(unexpected))
+                    )
+
+            for field_name, field_assertion in expected_fields.items():
+                if field_name not in actual_fields:
+                    continue
+
+                self._assert_capture(
+                    actual_fields[field_name],
+                    field_assertion,
+                    f"{path}.{field_name}",
+                )
+
+            return
+
         raise ValueError(f"unknown assertion type: {assertion.kind}")
 
     @property
@@ -564,12 +785,17 @@ class CCallResult:
         self._require_run()
         return self.return_capture
 
-    def equals(self, expected, message: str | None = None):
+    def equals(
+        self,
+        expected,
+        message: str | None = None,
+    ):
         self._require_run()
 
         if isinstance(expected, bytes):
             raise TypeError(
-                "equals() cannot compare bytes; " "use buffer_equals() instead"
+                "equals() cannot compare bytes; "
+                "use buffer_equals() instead"
             )
 
         actual = self.return_type.parse(self.value)
@@ -585,12 +811,17 @@ class CCallResult:
 
         return self
 
-    def not_equal(self, expected, message: str | None = None):
+    def not_equal(
+        self,
+        expected,
+        message: str | None = None,
+    ):
         self._require_run()
 
         if isinstance(expected, bytes):
             raise TypeError(
-                "not_equal() cannot compare bytes; " "use buffer_equals() instead"
+                "not_equal() cannot compare bytes; "
+                "use buffer_equals() instead"
             )
 
         actual = self.return_type.parse(self.value)
@@ -775,7 +1006,8 @@ class CCallResult:
 
         if self.return_capture is None:
             raise RuntimeError(
-                "returned capture was not produced; " "call capture_return() first"
+                "returned capture was not produced; "
+                "call capture_return() first"
             )
 
         self._assert_capture(
@@ -786,7 +1018,11 @@ class CCallResult:
 
         return self
 
-    def equals_string(self, expected: str, message: str | None = None):
+    def equals_string(
+        self,
+        expected: str,
+        message: str | None = None,
+    ):
         self._require_run()
 
         if self.value != expected:
@@ -807,7 +1043,8 @@ class CCallResult:
             prefix = f"{message}: " if message else ""
 
             self.failures.append(
-                f"{prefix}expected NULL\n" f"  received: {self.value!r}"
+                f"{prefix}expected NULL\n"
+                f"  received: {self.value!r}"
             )
 
         return self
@@ -818,29 +1055,20 @@ class CCallResult:
         if self.value == "NULL":
             prefix = f"{message}: " if message else ""
 
-            self.failures.append(f"{prefix}expected non-NULL pointer")
+            self.failures.append(
+                f"{prefix}expected non-NULL pointer"
+            )
 
         return self
 
-    def returned_pointer_is(self, buffer, message: str | None = None):
+    def returned_pointer_is(
+        self,
+        buffer,
+        message: str | None = None,
+    ):
         self._require_run()
 
-        if isinstance(buffer, CBufferOffset):
-            base = self.pointer_values.get(buffer.buffer.name)
-
-            if base is None:
-                raise RuntimeError(
-                    f"buffer '{buffer.buffer.name}' pointer " f"was not captured"
-                )
-
-            expected = hex(int(base, 16) + buffer.offset)
-        else:
-            expected = self.pointer_values.get(buffer.name)
-
-            if expected is None:
-                raise RuntimeError(
-                    f"buffer '{buffer.name}' pointer " f"was not captured"
-                )
+        expected = self._resolve_pointer(buffer)
 
         if self.value != expected:
             prefix = f"{message}: " if message else ""
@@ -965,13 +1193,22 @@ class MallocController:
 
 
 def generate_argument(argument):
+    if argument is None:
+        return "NULL"
+
     if isinstance(argument, CBuffer):
         return argument.name
 
     if isinstance(argument, CBufferOffset):
         return f"{argument.buffer.name} + {argument.offset}"
 
-    if isinstance(argument, CVariablePointer):
+    if isinstance(argument, CVariable):
+        return argument.name
+
+    if isinstance(argument, CStruct):
+        return argument.name
+
+    if isinstance(argument, CPointer):
         return f"&{argument.variable.name}"
 
     if isinstance(argument, CCallback):
@@ -984,11 +1221,28 @@ def generate_argument(argument):
 
 
 def get_variable(argument):
-    if isinstance(argument, CVariablePointer):
-        return argument.variable
+    if isinstance(argument, CPointer):
+        if isinstance(argument.variable, CVariable):
+            return argument.variable
 
     return None
 
+def get_declarations(argument):
+    if isinstance(argument, CPointer):
+        return get_declarations(argument.variable)
+
+    if isinstance(argument, CVariable):
+        return [argument]
+
+    if isinstance(argument, CStruct):
+        declarations = [argument]
+
+        for value in argument.fields.values():
+            declarations.extend(get_declarations(value))
+
+        return declarations
+
+    return []
 
 def generate_capture(capture, expression):
     if capture.kind == "buffer":
@@ -1013,7 +1267,8 @@ def generate_capture(capture, expression):
             f"    if ({expression} == NULL)\n"
             f'        fprintf(f, "POINTER:NULL\\n");\n'
             f"    else\n"
-            f'        fprintf(f, "POINTER:%p\\n", (void *)({expression}));'
+            f'        fprintf(f, "POINTER:%p\\n", '
+            f"(void *)({expression}));"
         )
 
     if capture.kind == "pointer_array":
@@ -1044,6 +1299,32 @@ def generate_capture(capture, expression):
             f"    }}"
         )
 
+    if capture.kind == "struct":
+        fields = []
+
+        for field_name, field_capture in capture.fields.items():
+            field_code = generate_capture(
+                field_capture,
+                f"{expression}->{field_name}",
+            )
+
+            fields.append(
+                f'fprintf(f, "FIELD:{field_name}\\n");\n'
+                f"{field_code}"
+            )
+
+        field_code = "\n".join(fields)
+
+        return (
+            f"    if ({expression} == NULL) {{\n"
+            f'        fprintf(f, "NULL\\n");\n'
+            f"    }} else {{\n"
+            f'        fprintf(f, "STRUCT\\n");\n'
+            f'        fprintf(f, "COUNT:{len(capture.fields)}\\n");\n'
+            f"{textwrap.indent(field_code, '        ')}\n"
+            f"    }}"
+        )
+
     raise ValueError(f"unknown capture type: {capture.kind}")
 
 
@@ -1056,12 +1337,13 @@ def parse_capture(lines):
 
         if line.startswith("BUFFER:"):
             _, size, data = line.split(":", 2)
+
             size = int(size)
             data = bytes.fromhex(data)
 
             if len(data) != size:
                 raise RuntimeError(
-                    f"buffer capture size mismatch: "
+                    "buffer capture size mismatch: "
                     f"declared {size}, received {len(data)}"
                 )
 
@@ -1089,15 +1371,21 @@ def parse_capture(lines):
 
             if not count_line.startswith("COUNT:"):
                 raise RuntimeError(
-                    f"expected pointer array count, received: {count_line}"
+                    "expected pointer array count, "
+                    f"received: {count_line}"
                 )
 
             count = int(count_line.removeprefix("COUNT:"))
 
             if count < 0:
-                raise RuntimeError("pointer array count cannot be negative")
+                raise RuntimeError(
+                    "pointer array count cannot be negative"
+                )
 
-            children = [parse_node(next(lines)) for _ in range(count)]
+            children = [
+                parse_node(next(lines))
+                for _ in range(count)
+            ]
 
             return CaptureResult(
                 "pointer_array",
@@ -1105,9 +1393,60 @@ def parse_capture(lines):
                 count=count,
             )
 
+        if line == "STRUCT":
+            count_line = next(lines)
+
+            if not count_line.startswith("COUNT:"):
+                raise RuntimeError(
+                    "expected struct field count, "
+                    f"received: {count_line}"
+                )
+
+            count = int(count_line.removeprefix("COUNT:"))
+
+            if count < 0:
+                raise RuntimeError(
+                    "struct field count cannot be negative"
+                )
+
+            fields = {}
+
+            for _ in range(count):
+                field_line = next(lines)
+
+                if not field_line.startswith("FIELD:"):
+                    raise RuntimeError(
+                        "expected struct field, "
+                        f"received: {field_line}"
+                    )
+
+                field_name = field_line.removeprefix("FIELD:")
+
+                if not field_name.isidentifier():
+                    raise RuntimeError(
+                        f"invalid captured struct field name: "
+                        f"{field_name!r}"
+                    )
+
+                if field_name in fields:
+                    raise RuntimeError(
+                        f"duplicate captured struct field: "
+                        f"{field_name!r}"
+                    )
+
+                fields[field_name] = parse_node(next(lines))
+
+            return CaptureResult(
+                "struct",
+                fields=fields,
+            )
+
         raise RuntimeError(f"unknown capture record: {line}")
 
-    return parse_node(next(lines))
+    try:
+        return parse_node(next(lines))
+    except StopIteration:
+        raise RuntimeError("empty capture output")
 
 
 def generate_cleanup(capture, expression):
@@ -1133,12 +1472,16 @@ def generate_cleanup(capture, expression):
 
         return "\n".join(cleanup)
 
+    if capture.kind == "struct":
+        return f"free({expression});"
+
     raise ValueError(f"unknown capture type: {capture.kind}")
 
 
 def generate_harness(
     function: CFunction,
     arguments,
+    declarations,
     buffer_outputs: dict[str, Path],
     protocol_output: Path,
     fd_outputs: dict[int, Path],
@@ -1146,67 +1489,86 @@ def generate_harness(
     capture: Capture | None = None,
     malloc_fail_at: int | None = None,
 ):
-    callbacks = [argument for argument in arguments if isinstance(argument, CCallback)]
+    callbacks = [
+        argument
+        for argument in arguments
+        if isinstance(argument, CCallback)
+    ]
 
     callback_names = set()
 
+    buffers = []
+
+    for argument in arguments:
+        buffer = get_buffer(argument)
+
+        if buffer is not None and buffer not in buffers:
+            buffers.append(buffer)
+
+    variables = [
+        declaration
+        for declaration in declarations
+        if isinstance(declaration, CVariable)
+    ]
+
     reserved_names = {
         "result",
-        *(
-            buffer.name
-            for argument in arguments
-            if (buffer := get_buffer(argument)) is not None
-        ),
-        *(
-            variable.name
-            for argument in arguments
-            if (variable := get_variable(argument)) is not None
-        ),
+        *(buffer.name for buffer in buffers),
+        *(declaration.name for declaration in declarations),
     }
 
     for callback in callbacks:
         if callback.name in callback_names:
-            raise ValueError(f"duplicate callback name: {callback.name!r}")
+            raise ValueError(
+                f"duplicate callback name: {callback.name!r}"
+            )
 
         if callback.name in reserved_names:
             raise ValueError(
-                f"callback name conflicts with harness name: {callback.name!r}"
+                "callback name conflicts with "
+                f"harness name: {callback.name!r}"
             )
 
         callback_names.add(callback.name)
 
     if function.name in callback_names:
         raise ValueError(
-            f"callback name conflicts with function name: {function.name!r}"
+            "callback name conflicts with "
+            f"function name: {function.name!r}"
         )
 
-    callback_definitions = "\n\n".join(callback.generate() for callback in callbacks)
+    callback_definitions = "\n\n".join(
+        callback.generate()
+        for callback in callbacks
+    )
 
     argument_types = ", ".join(
-        argument_type.declaration for argument_type in function.arg_types
+        argument_type.declaration
+        for argument_type in function.arg_types
     )
 
     if not argument_types:
         argument_types = "void"
 
-    argument_values = ", ".join(generate_argument(argument) for argument in arguments)
+    argument_values = ", ".join(
+        generate_argument(argument)
+        for argument in arguments
+    )
 
-    buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
+    buffer_declarations = "\n    ".join(
+        buffer.generate()
+        for buffer in buffers
+    )
 
-    variables = []
-
-    for argument in arguments:
-        variable = get_variable(argument)
-
-        if variable is not None and variable not in variables:
-            variables.append(variable)
-
-    buffer_declarations = "\n    ".join(buffer.generate() for buffer in buffers)
-
-    variable_declarations = "\n    ".join(variable.generate() for variable in variables)
+    declaration_code = "\n    ".join(
+        declaration.generate()
+        for declaration in declarations
+    )
 
     buffer_pointers = "\n    ".join(
-        f'dprintf({PROTOCOL_FD}, "BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
+        f'dprintf({PROTOCOL_FD}, '
+        f'"BUFFER:{buffer.name}:%p\\n", '
+        f"(void *){buffer.name});"
         for buffer in buffers
     )
 
@@ -1219,6 +1581,21 @@ def generate_harness(
         for variable in variables
     )
 
+    variable_pointers = "\n    ".join(
+        f'dprintf({PROTOCOL_FD}, '
+        f'"VARIABLE_POINTER:{variable.name}:%p\\n", '
+        f"(void *)&{variable.name});"
+        for variable in variables
+    )
+
+    struct_pointers = "\n    ".join(
+        f'dprintf({PROTOCOL_FD}, '
+        f'"STRUCT_POINTER:{declaration.name}:%p\\n", '
+        f"(void *)&{declaration.name});"
+        for declaration in declarations
+        if isinstance(declaration, CStruct)
+    )
+
     buffer_writes = "\n    ".join(
         (
             f'{{ FILE *f = fopen("{path}", "wb"); '
@@ -1226,7 +1603,8 @@ def generate_harness(
             f"fclose(f); }}"
         )
         for buffer, path in (
-            (buffer, buffer_outputs[buffer.name]) for buffer in buffers
+            (buffer, buffer_outputs[buffer.name])
+            for buffer in buffers
         )
     )
 
@@ -1235,14 +1613,19 @@ def generate_harness(
         argument_values,
     )
 
-    output = function.return_type.generate_output("result", fd=PROTOCOL_FD)
+    output = function.return_type.generate_output(
+        "result",
+        fd=PROTOCOL_FD,
+    )
 
     capture_write = ""
     cleanup_write = ""
 
     if capture_output is not None:
         if capture is None:
-            raise ValueError("capture output requires a capture specification")
+            raise ValueError(
+                "capture output requires a capture specification"
+            )
 
         capture_code = generate_capture(
             capture,
@@ -1264,27 +1647,38 @@ def generate_harness(
         if cleanup_code:
             cleanup_write = cleanup_code
 
-    headers = "\n".join(f"#include <{header}>" for header in function.headers)
+    headers = "\n".join(
+        f"#include <{header}>"
+        for header in function.headers
+    )
 
     protocol_setup = f"""
         {{
-            FILE *protocol_file = fopen("{protocol_output}", "w");
-    
+            FILE *protocol_file = fopen(
+                "{protocol_output}",
+                "w"
+            );
+
             if (protocol_file == NULL)
                 return 1;
-    
-            if (dup2(fileno(protocol_file), {PROTOCOL_FD}) == -1)
+
+            if (dup2(
+                fileno(protocol_file),
+                {PROTOCOL_FD}
+            ) == -1)
                 return 1;
-    
+
             fclose(protocol_file);
         }}
     """
 
     fd_setup = "\n    ".join(
         (
-            f'{{ int fd = open("{path}", O_WRONLY | O_CREAT | O_TRUNC, 0600); '
+            f'{{ int fd = open("{path}", '
+            f"O_WRONLY | O_CREAT | O_TRUNC, 0600); "
             f"if (fd == -1) return 1; "
-            f"if (dup2(fd, {fd_number}) == -1) return 1; "
+            f"if (dup2(fd, {fd_number}) == -1) "
+            f"return 1; "
             f"if (fd != {fd_number}) close(fd); }}"
         )
         for fd_number, path in fd_outputs.items()
@@ -1300,12 +1694,23 @@ def generate_harness(
     malloc_setup = "malloc_strike_reset();"
 
     if malloc_fail_at is not None:
-        malloc_setup += f"\n    malloc_strike_fail_at({malloc_fail_at});"
+        malloc_setup += (
+            f"\n    malloc_strike_fail_at({malloc_fail_at});"
+        )
 
-    malloc_output = f"""dprintf({PROTOCOL_FD}, "MALLOC_COUNT:%zu\\n", malloc_strike_count());
-    
+    malloc_output = f"""dprintf(
+        {PROTOCOL_FD},
+        "MALLOC_COUNT:%zu\\n",
+        malloc_strike_count()
+    );
+
     for (size_t i = 0; i < malloc_strike_count(); i++)
-        dprintf({PROTOCOL_FD}, "MALLOC:%zu:%zu\\n", i, malloc_strike_size(i));"""
+        dprintf(
+            {PROTOCOL_FD},
+            "MALLOC:%zu:%zu\\n",
+            i,
+            malloc_strike_size(i)
+        );"""
 
     return f"""
 #include <stdio.h>
@@ -1328,9 +1733,13 @@ int main(void)
 
     {buffer_declarations}
 
-    {variable_declarations}
+    {declaration_code}
 
     {buffer_pointers}
+
+    {variable_pointers}
+
+    {struct_pointers}
 
     {malloc_setup}
 
@@ -1367,7 +1776,9 @@ class CContext:
         self.debug = debug
         self.asan = asan
         self._asan_built = False
+
         self._functions = {}
+
         self.malloc = MallocController(self)
         self._next_fd = 3
 
@@ -1384,6 +1795,7 @@ class CContext:
         headers = []
         link = []
         err_flags = True
+
         if self.config is not None:
             definition = self.config.functions.get(name)
 
@@ -1405,6 +1817,7 @@ class CContext:
         )
 
         self._functions[name] = function
+
         return function
 
     def __getattr__(self, name: str):
@@ -1437,6 +1850,19 @@ class CContext:
             context=self,
             type=type,
             value=value,
+            name=name,
+        )
+
+    def struct(
+        self,
+        type: str,
+        fields: dict[str, object],
+        name: str = "structure",
+    ):
+        return CStruct(
+            context=self,
+            type=type,
+            fields=fields,
             name=name,
         )
 
@@ -1475,7 +1901,10 @@ class CContext:
         *arguments,
     ):
         if self.config is None:
-            raise RuntimeError("This project does not configure " "C function testing")
+            raise RuntimeError(
+                "This project does not configure "
+                "C function testing"
+            )
 
         if isinstance(function, str):
             function = self.function(function)
@@ -1493,7 +1922,8 @@ class CContext:
             if isinstance(argument_type, FunctionPointerType):
                 if not isinstance(argument, CCallback):
                     raise TypeError(
-                        f"argument {index} of {function.name} expects " f"a callback"
+                        f"argument {index} of {function.name} "
+                        "expects a callback"
                     )
 
                 if argument.returns != argument_type.returns:
@@ -1506,8 +1936,8 @@ class CContext:
                 if len(argument.args) != len(argument_type.args):
                     raise TypeError(
                         f"callback {argument.name!r} expects "
-                        f"{len(argument_type.args)} arguments, got "
-                        f"{len(argument.args)}"
+                        f"{len(argument_type.args)} arguments, "
+                        f"got {len(argument.args)}"
                     )
 
                 for callback_arg, expected_arg in zip(
@@ -1518,8 +1948,9 @@ class CContext:
 
                     if actual_type != expected_arg:
                         raise TypeError(
-                            f"callback {argument.name!r} argument type "
-                            f"{actual_type!r} does not match expected "
+                            f"callback {argument.name!r} "
+                            f"argument type {actual_type!r} "
+                            f"does not match expected "
                             f"{expected_arg!r}"
                         )
 
@@ -1540,6 +1971,15 @@ class CContext:
     def _execute(self, call_result: CCallResult):
         function = call_result.function
         arguments = call_result.arguments
+
+
+        declarations = []
+
+        for argument in arguments:
+            for declaration in get_declarations(argument):
+                if declaration not in declarations:
+                    declarations.append(declaration)
+
         malloc_fail_at = self.malloc.fail_at_index
 
         buffers = []
@@ -1550,7 +1990,9 @@ class CContext:
             if buffer is not None and buffer not in buffers:
                 buffers.append(buffer)
 
-        with tempfile.TemporaryDirectory(prefix="test-42-c-call-") as temp:
+        with tempfile.TemporaryDirectory(
+            prefix="test-42-c-call-"
+        ) as temp:
             temp_dir = Path(temp)
 
             protocol_output = temp_dir / "protocol.txt"
@@ -1562,7 +2004,8 @@ class CContext:
             }
 
             buffer_outputs = {
-                buffer.name: temp_dir / f"{buffer.name}.bin" for buffer in buffers
+                buffer.name: temp_dir / f"{buffer.name}.bin"
+                for buffer in buffers
             }
 
             capture_output = None
@@ -1573,25 +2016,50 @@ class CContext:
             source = generate_harness(
                 function,
                 arguments,
+                declarations,
                 buffer_outputs,
                 protocol_output=protocol_output,
                 fd_outputs=fd_outputs,
                 capture_output=capture_output,
                 capture=call_result._return_capture,
-                malloc_fail_at=self.malloc.fail_at_index,
+                malloc_fail_at=malloc_fail_at,
             )
 
             if self.debug:
                 print()
-                print(color("  [DEBUG] Generated C test", Color.CYAN))
                 print(
-                    color("  ────────────────────────────────────", Color.CYAN), end=""
+                    color(
+                        "  [DEBUG] Generated C test",
+                        Color.CYAN,
+                    )
                 )
                 print(
-                    color(textwrap.indent(source, "  "), Color.YELLOW),
-                    end="" if source.endswith("\n") else "\n",
+                    color(
+                        "  ────────────────────────────────────",
+                        Color.CYAN,
+                    ),
+                    end="",
                 )
-                print(color("  ────────────────────────────────────", Color.CYAN))
+                print(
+                    color(
+                        textwrap.indent(
+                            source,
+                            "  ",
+                        ),
+                        Color.YELLOW,
+                    ),
+                    end=(
+                        ""
+                        if source.endswith("\n")
+                        else "\n"
+                    ),
+                )
+                print(
+                    color(
+                        "  ────────────────────────────────────",
+                        Color.CYAN,
+                    )
+                )
 
             source_file = temp_dir / "test.c"
             executable = temp_dir / "test"
@@ -1659,7 +2127,9 @@ class CContext:
             if compile_result.returncode != 0:
                 raise RuntimeError(
                     "failed to compile C test harness:\n"
-                    + compile_result.stderr.decode(errors="replace")
+                    + compile_result.stderr.decode(
+                        errors="replace"
+                    )
                 )
 
             if self.debug:
@@ -1675,22 +2145,35 @@ class CContext:
                 )
 
             if result.returncode < 0:
-                raise AssertionFailure("C function test crashed")
+                raise AssertionFailure(
+                    "C function test crashed"
+                )
 
-            stderr = result.stderr.decode(errors="replace")
+            stderr = result.stderr.decode(
+                errors="replace"
+            )
 
             if self.asan and "AddressSanitizer" in stderr:
-                message = "AddressSanitizer detected a memory error"
+                message = (
+                    "AddressSanitizer detected "
+                    "a memory error"
+                )
 
                 if malloc_fail_at is not None:
-                    message += f" at malloc failure {malloc_fail_at}"
+                    message += (
+                        f" at malloc failure "
+                        f"{malloc_fail_at}"
+                    )
 
-                raise AssertionFailure(message + ":\n\n" + stderr)
+                raise AssertionFailure(
+                    message + ":\n\n" + stderr
+                )
 
             if result.returncode != 0:
                 raise RuntimeError(
                     "C test harness failed "
-                    f"(exit code {result.returncode})\n" + stderr
+                    f"(exit code {result.returncode})\n"
+                    + stderr
                 )
 
             captured_buffers = {}
@@ -1699,10 +2182,15 @@ class CContext:
                 path = buffer_outputs[buffer.name]
 
                 if path.exists():
-                    captured_buffers[buffer.name] = path.read_bytes()
+                    captured_buffers[buffer.name] = (
+                        path.read_bytes()
+                    )
 
             if not protocol_output.exists():
-                raise RuntimeError("C test harness did not produce protocol output")
+                raise RuntimeError(
+                    "C test harness did not produce "
+                    "protocol output"
+                )
 
             output = protocol_output.read_text().splitlines()
 
@@ -1717,41 +2205,87 @@ class CContext:
 
             for line in output:
                 if line.startswith("BUFFER:"):
-                    _, name, pointer = line.split(":", 2)
+                    _, name, pointer = line.split(
+                        ":",
+                        2,
+                    )
+
+                    pointer_values[name] = pointer
+
+                elif line.startswith("VARIABLE_POINTER:"):
+                    _, name, pointer = line.split(
+                        ":",
+                        2,
+                    )
+
+                    pointer_values[name] = pointer
+
+                elif line.startswith("STRUCT_POINTER:"):
+                    _, name, pointer = line.split(
+                        ":",
+                        2,
+                    )
+
                     pointer_values[name] = pointer
 
                 elif line.startswith("VARIABLE:"):
-                    _, name, value = line.split(":", 2)
+                    _, name, value = line.split(
+                        ":",
+                        2,
+                    )
+
                     variables[name] = value
 
-            for argument in arguments:
-                variable = get_variable(argument)
-
-                if variable is None:
+            for declaration in declarations:
+                if not isinstance(
+                    declaration,
+                    CVariable,
+                ):
                     continue
 
-                if variable.name not in variables:
+                if declaration.name not in variables:
                     continue
 
-                variables[variable.name] = variable.type.parse(variables[variable.name])
+                variables[declaration.name] = (
+                    declaration.type.parse(
+                        variables[declaration.name]
+                    )
+                )
 
             malloc_count = 0
             malloc_sizes = []
 
             for line in output:
                 if line.startswith("MALLOC_COUNT:"):
-                    malloc_count = int(line.removeprefix("MALLOC_COUNT:"))
+                    malloc_count = int(
+                        line.removeprefix(
+                            "MALLOC_COUNT:"
+                        )
+                    )
 
                 elif line.startswith("MALLOC:"):
-                    _, _, size = line.split(":", 2)
+                    _, _, size = line.split(
+                        ":",
+                        2,
+                    )
+
                     malloc_sizes.append(int(size))
 
-            return_lines = [line for line in output if line.startswith("RETURN:")]
+            return_lines = [
+                line
+                for line in output
+                if line.startswith("RETURN:")
+            ]
 
             if not return_lines:
-                raise RuntimeError("C test harness did not produce a return value")
+                raise RuntimeError(
+                    "C test harness did not produce "
+                    "a return value"
+                )
 
-            value = return_lines[-1].removeprefix("RETURN:")
+            value = return_lines[-1].removeprefix(
+                "RETURN:"
+            )
 
             call_result.value = value
             call_result.stdout = result.stdout
@@ -1766,15 +2300,25 @@ class CContext:
 
             if capture_output is not None:
                 if not capture_output.exists():
-                    raise RuntimeError("C test harness did not produce return capture")
+                    raise RuntimeError(
+                        "C test harness did not produce "
+                        "return capture"
+                    )
 
-                capture_lines = capture_output.read_text().splitlines()
+                capture_lines = (
+                    capture_output
+                    .read_text()
+                    .splitlines()
+                )
 
                 if not capture_lines:
                     raise RuntimeError(
-                        "C test harness produced an empty return capture"
+                        "C test harness produced an "
+                        "empty return capture"
                     )
 
-                call_result.return_capture = parse_capture(capture_lines)
+                call_result.return_capture = (
+                    parse_capture(capture_lines)
+                )
 
             return call_result
