@@ -4,7 +4,7 @@ A Python-based testing framework for testing C functions in 42 projects.
 
 The framework generates small C test harnesses, compiles them against the student's project, executes them, and exposes the results through a Python API.
 
-It is designed primarily for testing functions such as those found in `libft`, but can be used for other C projects as well.
+It is designed primarily for testing functions such as those found in `libft`, but can also be used for other C projects.
 
 ______________________________________________________________________
 
@@ -25,6 +25,9 @@ ______________________________________________________________________
   - [Buffer Size](#buffer-size)
   - [Buffer Types](#buffer-types)
   - [Buffer Offsets](#buffer-offsets)
+- [Test-Owned Variables](#test-owned-variables)
+  - [Creating a Variable](#creating-a-variable)
+  - [Checking a Variable](#checking-a-variable)
 - [Checking Modified Buffers](#checking-modified-buffers)
 - [Returned Allocated Memory](#returned-allocated-memory)
 - [Capture Types](#capture-types)
@@ -64,10 +67,11 @@ ______________________________________________________________________
   - [Generated C](#generated-c)
   - [Temporary Files](#temporary-files)
   - [Pointer Ownership](#pointer-ownership)
+    - [Test-owned memory](#test-owned-memory)
+    - [Function-owned memory](#function-owned-memory)
 - [Current Limitations](#current-limitations)
   - [Function pointers](#function-pointers)
   - [C type compatibility](#c-type-compatibility)
-  - [Build systems](#build-systems)
 - [API Summary](#api-summary)
   - [Context](#context)
   - [Function](#function)
@@ -84,6 +88,8 @@ ______________________________________________________________________
 - Call C functions directly from Python.
 - Test return values.
 - Test and compare modified input buffers.
+- Create test-owned C variables and pass pointers to them.
+- Check values of test-owned variables after a function modifies them.
 - Test functions returning allocated memory.
 - Capture returned buffers and pointer arrays.
 - Test callbacks and function-pointer arguments.
@@ -97,7 +103,7 @@ ______________________________________________________________________
 
 # Basic Usage
 
-A project is represented by a `Project` and a testing context by `CContext`.
+A project is represented by a `Project` and a testing context by a `CContext`.
 
 A typical test looks like:
 
@@ -118,7 +124,7 @@ def test_strlen(c):
     result.assert_now()
 ```
 
-The `CFunction` object is callable, so this:
+The `CFunction` object is callable, so:
 
 ```python
 ft_strlen("hello")
@@ -162,7 +168,7 @@ A function can then be called:
 result = ft_strlen("hello").run()
 ```
 
-The number of arguments is checked before the C test is generated.
+The number of arguments is checked before the C test harness is generated.
 
 ______________________________________________________________________
 
@@ -252,7 +258,7 @@ ______________________________________________________________________
 
 # Buffers
 
-`CBuffer` represents memory allocated by the test harness and passed to the student's function.
+`CBuffer` represents an array allocated by the test harness and passed to the student's function.
 
 ```python
 buffer = c.buffer(
@@ -261,7 +267,7 @@ buffer = c.buffer(
 )
 ```
 
-The generated C code will contain an array initialized with the supplied data.
+The generated C code contains an array initialized with the supplied data.
 
 For example:
 
@@ -273,6 +279,8 @@ buffer = c.buffer(
 
 c.ft_strcpy(buffer, "world").run()
 ```
+
+The buffer remains owned by the test harness and can be inspected after the function call.
 
 ______________________________________________________________________
 
@@ -358,6 +366,146 @@ The offset equal to `buffer.size` represents the one-past-the-end pointer.
 
 ______________________________________________________________________
 
+# Test-Owned Variables
+
+`CPointer` represents a C variable owned by the test harness.
+
+It is useful when a function expects a pointer to a variable rather than a pointer to an array.
+
+For example, given:
+
+```c
+void test_pointer(int *value);
+```
+
+a test can create an `int` variable and pass its address:
+
+```python
+value = c.pointer(
+    "int",
+    10,
+    name="value",
+)
+
+result = c.test_pointer(value).run()
+```
+
+The generated C code is equivalent to:
+
+```c
+int value = 10;
+
+test_pointer(&value);
+```
+
+Unlike `Capture`, a `CPointer` is test-owned memory. The student's function is allowed to modify the variable, and the test can inspect the result afterward.
+
+______________________________________________________________________
+
+## Creating a Variable
+
+Create a test-owned variable with:
+
+```python
+value = c.pointer(
+    "int",
+    10,
+    name="value",
+)
+```
+
+The arguments are:
+
+```python
+c.pointer(
+    type,
+    value,
+    name=...,
+)
+```
+
+For example:
+
+```python
+number = c.pointer(
+    "int",
+    42,
+    name="number",
+)
+```
+
+The generated C declaration is:
+
+```c
+int number = 42;
+```
+
+When passed to a function, the framework automatically passes its address:
+
+```python
+c.some_function(number)
+```
+
+which generates:
+
+```c
+some_function(&number);
+```
+
+This means the test does not need to manually write `&`.
+
+______________________________________________________________________
+
+## Checking a Variable
+
+After the function runs, the value of a test-owned variable can be checked with `variable_equals()`:
+
+```python
+value = c.pointer(
+    "int",
+    10,
+    name="value",
+)
+
+result = c.test_pointer(value).run()
+
+result.variable_equals(
+    value,
+    42,
+)
+
+result.assert_now()
+```
+
+For:
+
+```c
+void test_pointer(int *value)
+{
+    *value = 42;
+}
+```
+
+the test verifies that the function changed:
+
+```text
+10 -> 42
+```
+
+A custom message can be supplied:
+
+```python
+result.variable_equals(
+    value,
+    42,
+    "function did not modify value correctly",
+)
+```
+
+`variable_equals()` is intended for checking test-owned variables after the function has modified them.
+
+______________________________________________________________________
+
 # Checking Modified Buffers
 
 After a test runs, buffers passed to the function are copied back and can be checked with:
@@ -435,6 +583,16 @@ ______________________________________________________________________
 
 # Capture Types
 
+Captures describe memory returned by the student's function.
+
+They are different from `CBuffer` and `CPointer`:
+
+- `CBuffer` is test-owned array memory.
+- `CPointer` is a test-owned C variable.
+- `Capture` describes memory owned by the function and returned to the test.
+
+______________________________________________________________________
+
 ## `Capture.buffer(size)`
 
 Captures `size` bytes from the returned pointer.
@@ -446,6 +604,8 @@ Capture.buffer(10)
 The returned pointer must be non-NULL to produce a buffer capture.
 
 A size of zero is allowed for return captures.
+
+The captured allocation is freed by the generated harness.
 
 ______________________________________________________________________
 
@@ -481,7 +641,7 @@ capture.child(Capture.buffer(5))
 
 The number of children must exactly match the array size.
 
-The returned pointer array and its captured child allocations are freed by the harness according to the capture structure.
+The returned pointer array and captured child allocations are freed by the harness according to the capture structure.
 
 ______________________________________________________________________
 
@@ -934,7 +1094,7 @@ FunctionConfig(
 )
 ```
 
-These flags are applied when compiling the generated C test program.
+These flags are applied when compiling the generated test program.
 
 ______________________________________________________________________
 
@@ -1049,7 +1209,7 @@ Create CContext
 Get CFunction
        |
        v
-Create arguments / buffers / callbacks
+Create arguments / buffers / variables / callbacks
        |
        v
 Create CCallResult
@@ -1070,7 +1230,7 @@ Compile harness
 Execute C function
        |
        v
-Capture return value / buffers / malloc information
+Capture return value / buffers / variables / malloc information
        |
        v
 Perform assertions
@@ -1140,13 +1300,38 @@ Instead, the framework generates a temporary C source file containing:
 - callback definitions
 - function declarations
 - test arguments
+- test-owned buffers
+- test-owned variables
 - the function call
 - buffer capture code
+- variable capture code
 - malloc information
 - return-value output
 - cleanup code
 
 The generated source is then compiled and executed.
+
+For example, this Python:
+
+```python
+value = c.pointer(
+    "int",
+    10,
+    name="value",
+)
+
+c.test_pointer(value).run()
+```
+
+generates C equivalent to:
+
+```c
+int value = 10;
+
+test_pointer(&value);
+```
+
+The framework then records the value of `value` after the function returns.
 
 ______________________________________________________________________
 
@@ -1160,13 +1345,23 @@ ______________________________________________________________________
 
 ## Pointer Ownership
 
-Return captures currently imply ownership depending on the capture type.
+The framework distinguishes between test-owned and function-owned memory.
+
+### Test-owned memory
+
+`CBuffer` and `CPointer` create variables owned by the test harness.
+
+The student's function may read or modify this memory, but the harness remains responsible for it.
+
+### Function-owned memory
+
+`Capture` describes memory returned by the student's function.
 
 `Capture.buffer()` and pointer-array captures cause the generated harness to free the captured allocations.
 
 `Capture.pointer_raw()` intentionally does not free the pointer.
 
-This distinction is particularly important when testing allocation failures or when the returned pointer must only be observed rather than dereferenced.
+This distinction is important when testing allocation failures or when a returned pointer must only be observed rather than dereferenced.
 
 ______________________________________________________________________
 
@@ -1202,16 +1397,6 @@ char const *
 
 are semantically equivalent C types but are not currently treated as identical by the callback validator.
 
-## Build systems
-
-ASan builds currently require:
-
-```text
-make
-```
-
-and a Makefile that correctly uses `CFLAGS`.
-
 ______________________________________________________________________
 
 # API Summary
@@ -1221,6 +1406,7 @@ ______________________________________________________________________
 ```python
 c.function(...)
 c.buffer(...)
+c.pointer(...)
 c.callback(...)
 c.program(...)
 c.malloc.fail_at(...)
@@ -1243,11 +1429,14 @@ result.run()
 result.equals(...)
 result.not_equal(...)
 result.equals_string(...)
+result.parsed_value
 
 result.is_null(...)
 result.is_not_null(...)
 
 result.buffer_equals(...)
+result.variable_equals(...)
+
 result.returned_buffer_equals(...)
 result.returned_pointer_is(...)
 
@@ -1279,4 +1468,12 @@ Assert.is_null_pointer(...)
 Assert.is_not_null_pointer(...)
 Assert.pointer_array(...)
 assertion.child(...)
+```
+
+The main conceptual addition is the explicit distinction:
+
+```text
+CBuffer   -> test-owned array
+CPointer  -> test-owned variable
+Capture   -> function-owned returned memory
 ```
