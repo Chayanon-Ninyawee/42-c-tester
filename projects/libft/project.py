@@ -325,6 +325,12 @@ project = Project(
                     "int",
                 ],
             ),
+            "test_pointer": FunctionDefinition(
+                returns="void",
+                args=[
+                    "int *",
+                ],
+            ),
         },
         link=[
             "libft.a",
@@ -368,5 +374,6 @@ project = Project(
         "ft_putstr_fd",
         "ft_putendl_fd",
         "ft_putnbr_fd",
+        "test_pointer",
     ],
 )

@@ -90,7 +90,7 @@ def get_buffer(argument):
     return None
 
 
-class CPointer:
+class CVariable:
     def __init__(
         self,
         context,
@@ -99,12 +99,10 @@ class CPointer:
         name: str = "variable",
     ):
         if not isinstance(type, str):
-            raise TypeError("pointer type must be a string")
+            raise TypeError("variable type must be a string")
 
         if not name.isidentifier():
-            raise ValueError(
-                f"pointer variable name must be a valid C identifier: {name!r}"
-            )
+            raise ValueError(f"variable name must be a valid C identifier: {name!r}")
 
         self.context = context
         self.type = parse_ctype(type)
@@ -112,13 +110,31 @@ class CPointer:
         self.name = name
 
     def __repr__(self):
-        return f"pointer({self.name})"
+        return f"variable({self.name})"
 
     def generate(self):
         return self.type.generate_declaration(
             self.name,
             self.value,
         )
+
+    def pointer(self):
+        return CVariablePointer(self)
+
+
+class CVariablePointer:
+    def __init__(self, variable: CVariable):
+        if not isinstance(variable, CVariable):
+            raise TypeError("variable pointer requires a CVariable")
+
+        self.variable = variable
+
+    @property
+    def name(self):
+        return f"&{self.variable.name}"
+
+    def __repr__(self):
+        return f"{self.variable.name}.pointer()"
 
 
 class CFileDescriptor:
@@ -712,14 +728,14 @@ class CCallResult:
 
     def variable_equals(
         self,
-        variable: CPointer,
+        variable: CVariable,
         expected,
         message: str | None = None,
     ):
         self._require_run()
 
-        if not isinstance(variable, CPointer):
-            raise TypeError("variable assertion expects a CPointer")
+        if not isinstance(variable, CVariable):
+            raise TypeError("variable assertion expects a CVariable")
 
         if variable.name not in self.variables:
             raise RuntimeError(f"variable '{variable.name}' was not captured")
@@ -955,8 +971,8 @@ def generate_argument(argument):
     if isinstance(argument, CBufferOffset):
         return f"{argument.buffer.name} + {argument.offset}"
 
-    if isinstance(argument, CPointer):
-        return f"&{argument.name}"
+    if isinstance(argument, CVariablePointer):
+        return f"&{argument.variable.name}"
 
     if isinstance(argument, CCallback):
         return argument.name
@@ -965,6 +981,13 @@ def generate_argument(argument):
         return str(argument.fd)
 
     return str(argument)
+
+
+def get_variable(argument):
+    if isinstance(argument, CVariablePointer):
+        return argument.variable
+
+    return None
 
 
 def generate_capture(capture, expression):
@@ -1134,6 +1157,11 @@ def generate_harness(
             for argument in arguments
             if (buffer := get_buffer(argument)) is not None
         ),
+        *(
+            variable.name
+            for argument in arguments
+            if (variable := get_variable(argument)) is not None
+        ),
     }
 
     for callback in callbacks:
@@ -1142,7 +1170,7 @@ def generate_harness(
 
         if callback.name in reserved_names:
             raise ValueError(
-                f"callback name conflicts with harness name: " f"{callback.name!r}"
+                f"callback name conflicts with harness name: {callback.name!r}"
             )
 
         callback_names.add(callback.name)
@@ -1165,11 +1193,17 @@ def generate_harness(
 
     buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
 
-    pointers = [argument for argument in arguments if isinstance(argument, CPointer)]
+    variables = []
+
+    for argument in arguments:
+        variable = get_variable(argument)
+
+        if variable is not None and variable not in variables:
+            variables.append(variable)
 
     buffer_declarations = "\n    ".join(buffer.generate() for buffer in buffers)
 
-    pointer_declarations = "\n    ".join(pointer.generate() for pointer in pointers)
+    variable_declarations = "\n    ".join(variable.generate() for variable in variables)
 
     buffer_pointers = "\n    ".join(
         f'dprintf({PROTOCOL_FD}, "BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
@@ -1182,7 +1216,7 @@ def generate_harness(
             fd=PROTOCOL_FD,
             prefix=f"VARIABLE:{variable.name}",
         )
-        for variable in pointers
+        for variable in variables
     )
 
     buffer_writes = "\n    ".join(
@@ -1294,7 +1328,7 @@ int main(void)
 
     {buffer_declarations}
 
-    {pointer_declarations}
+    {variable_declarations}
 
     {buffer_pointers}
 
@@ -1393,13 +1427,13 @@ class CContext:
             type=type,
         )
 
-    def pointer(
+    def variable(
         self,
         type: str,
         value=None,
         name: str = "variable",
     ):
-        return CPointer(
+        return CVariable(
             context=self,
             type=type,
             value=value,
@@ -1691,13 +1725,15 @@ class CContext:
                     variables[name] = value
 
             for argument in arguments:
-                if not isinstance(argument, CPointer):
+                variable = get_variable(argument)
+
+                if variable is None:
                     continue
 
-                if argument.name not in variables:
+                if variable.name not in variables:
                     continue
 
-                variables[argument.name] = argument.type.parse(variables[argument.name])
+                variables[variable.name] = variable.type.parse(variables[variable.name])
 
             malloc_count = 0
             malloc_sizes = []
