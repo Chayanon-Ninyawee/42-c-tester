@@ -90,6 +90,37 @@ def get_buffer(argument):
     return None
 
 
+class CPointer:
+    def __init__(
+        self,
+        context,
+        type: str,
+        value=None,
+        name: str = "variable",
+    ):
+        if not isinstance(type, str):
+            raise TypeError("pointer type must be a string")
+
+        if not name.isidentifier():
+            raise ValueError(
+                f"pointer variable name must be a valid C identifier: {name!r}"
+            )
+
+        self.context = context
+        self.type = parse_ctype(type)
+        self.value = value
+        self.name = name
+
+    def __repr__(self):
+        return f"pointer({self.name})"
+
+    def generate(self):
+        return self.type.generate_declaration(
+            self.name,
+            self.value,
+        )
+
+
 class CFileDescriptor:
     def __init__(self, context, fd: int):
         if fd < 3:
@@ -384,6 +415,7 @@ class CCallResult:
 
         self.buffers = {}
         self.pointer_values = {}
+        self.variables = {}
 
         self.malloc_count = 0
         self.malloc_sizes = []
@@ -678,6 +710,33 @@ class CCallResult:
 
         return self
 
+    def variable_equals(
+        self,
+        variable: CPointer,
+        expected,
+        message: str | None = None,
+    ):
+        self._require_run()
+
+        if not isinstance(variable, CPointer):
+            raise TypeError("variable assertion expects a CPointer")
+
+        if variable.name not in self.variables:
+            raise RuntimeError(f"variable '{variable.name}' was not captured")
+
+        actual = self.variables[variable.name]
+
+        if actual != expected:
+            prefix = f"{message}: " if message else ""
+
+            self.failures.append(
+                f"{prefix}variable '{variable.name}' mismatch\n"
+                f"  expected: {expected!r}\n"
+                f"  received: {actual!r}"
+            )
+
+        return self
+
     def returned_buffer_equals(
         self,
         expected: bytes,
@@ -896,6 +955,9 @@ def generate_argument(argument):
     if isinstance(argument, CBufferOffset):
         return f"{argument.buffer.name} + {argument.offset}"
 
+    if isinstance(argument, CPointer):
+        return f"&{argument.name}"
+
     if isinstance(argument, CCallback):
         return argument.name
 
@@ -1103,11 +1165,24 @@ def generate_harness(
 
     buffers = [argument for argument in arguments if isinstance(argument, CBuffer)]
 
+    pointers = [argument for argument in arguments if isinstance(argument, CPointer)]
+
     buffer_declarations = "\n    ".join(buffer.generate() for buffer in buffers)
+
+    pointer_declarations = "\n    ".join(pointer.generate() for pointer in pointers)
 
     buffer_pointers = "\n    ".join(
         f'dprintf({PROTOCOL_FD}, "BUFFER:{buffer.name}:%p\\n", (void *){buffer.name});'
         for buffer in buffers
+    )
+
+    variable_outputs = "\n    ".join(
+        variable.type.generate_output(
+            variable.name,
+            fd=PROTOCOL_FD,
+            prefix=f"VARIABLE:{variable.name}",
+        )
+        for variable in pointers
     )
 
     buffer_writes = "\n    ".join(
@@ -1219,6 +1294,8 @@ int main(void)
 
     {buffer_declarations}
 
+    {pointer_declarations}
+
     {buffer_pointers}
 
     {malloc_setup}
@@ -1232,6 +1309,8 @@ int main(void)
     {capture_write}
 
     {output}
+
+    {variable_outputs}
 
     {cleanup_write}
 
@@ -1312,6 +1391,19 @@ class CContext:
             size=size,
             name=name,
             type=type,
+        )
+
+    def pointer(
+        self,
+        type: str,
+        value=None,
+        name: str = "variable",
+    ):
+        return CPointer(
+            context=self,
+            type=type,
+            value=value,
+            name=name,
         )
 
     def fd(self):
@@ -1587,11 +1679,25 @@ class CContext:
                     captured_fds[fd] = path.read_bytes()
 
             pointer_values = {}
+            variables = {}
 
             for line in output:
                 if line.startswith("BUFFER:"):
                     _, name, pointer = line.split(":", 2)
                     pointer_values[name] = pointer
+
+                elif line.startswith("VARIABLE:"):
+                    _, name, value = line.split(":", 2)
+                    variables[name] = value
+
+            for argument in arguments:
+                if not isinstance(argument, CPointer):
+                    continue
+
+                if argument.name not in variables:
+                    continue
+
+                variables[argument.name] = argument.type.parse(variables[argument.name])
 
             malloc_count = 0
             malloc_sizes = []
@@ -1618,6 +1724,7 @@ class CContext:
             call_result.returncode = result.returncode
             call_result.buffers = captured_buffers
             call_result.pointer_values = pointer_values
+            call_result.variables = variables
             call_result.malloc_count = malloc_count
             call_result.malloc_sizes = malloc_sizes
 
