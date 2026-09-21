@@ -2,7 +2,7 @@
 
 A Python-based testing framework for testing C functions in 42 projects.
 
-The framework generates small C test harnesses, compiles them against the student's project, executes them, and exposes the results through a Python API.
+The framework generates small C test programs, compiles them against the student's project, executes them, and exposes the results through a Python API.
 
 It is designed primarily for testing functions such as those found in `libft`, but can also be used for other C projects.
 
@@ -14,70 +14,63 @@ ______________________________________________________________________
 
 - [Features](#features)
 - [Basic Usage](#basic-usage)
-- [Calling Functions](#calling-functions)
-- [Return Values](#return-values)
-  - [`equals()`](#equals)
-  - [`not_equal()`](#not_equal)
-  - [`parsed_value`](#parsed_value)
-  - [String Returns](#string-returns)
-  - [NULL Checks](#null-checks)
-- [Buffers](#buffers)
-  - [Buffer Size](#buffer-size)
-  - [Buffer Types](#buffer-types)
-  - [Buffer Offsets](#buffer-offsets)
-- [Test-Owned Variables](#test-owned-variables)
-  - [Creating a Variable](#creating-a-variable)
-  - [Checking a Variable](#checking-a-variable)
-- [Checking Modified Buffers](#checking-modified-buffers)
-- [Returned Allocated Memory](#returned-allocated-memory)
-- [Capture Types](#capture-types)
-  - [`Capture.buffer(size)`](#capturebuffersize)
-  - [`Capture.pointer_raw()`](#capturepointer_raw)
-  - [`Capture.pointer_array(size)`](#capturepointer_arraysize)
+- [Test Suites](#test-suites)
+- [Writing Tests](#writing-tests)
+  - [C Code](#c-code)
+  - [Standard Output](#standard-output)
+  - [Return Values](#return-values)
+  - [File Descriptors](#file-descriptors)
+  - [Values](#values)
+  - [Buffers](#buffers)
 - [Assertions](#assertions)
-  - [Buffer Equality](#buffer-equality)
-  - [Pointer Equality](#pointer-equality)
-  - [NULL Pointer](#null-pointer)
-  - [Non-NULL Pointer](#non-null-pointer)
-  - [Pointer Arrays](#pointer-arrays)
-- [Return Capture Assertions](#return-capture-assertions)
-- [Checking Returned Pointers](#checking-returned-pointers)
-- [Callbacks](#callbacks)
-  - [Callback Names](#callback-names)
+  - [`equals()`](#equals)
+  - [`reference()`](#reference)
+  - [`assert_now()`](#assert_now)
+- [Test-Owned C Code](#test-owned-c-code)
+  - [Variables](#variables)
+  - [Helper Functions](#helper-functions)
+  - [Includes](#includes)
 - [Malloc Testing](#malloc-testing)
   - [Malloc Count](#malloc-count)
   - [Malloc Size](#malloc-size)
 - [Simulating Malloc Failures](#simulating-malloc-failures)
-  - [Malloc Failure Sweeps](#malloc-failure-sweeps)
-- [`assert_now()` vs `assert_reference()`](#assert_now-vs-assert_reference)
-  - [`assert_now()`](#assert_now)
-  - [`assert_reference()`](#assert_reference)
-- [Chaining](#chaining)
-- [Project Configuration](#project-configuration)
-- [Headers](#headers)
-- [Project Includes](#project-includes)
-- [Compiler Flags](#compiler-flags)
-- [Libraries](#libraries)
-- [Build Configuration](#build-configuration)
 - [AddressSanitizer](#addresssanitizer)
 - [Debug Mode](#debug-mode)
 - [Test Lifecycle](#test-lifecycle)
-- [Example: `ft_strmapi`](#example-ft_strmapi)
-- [Design Notes](#design-notes)
-  - [Generated C](#generated-c)
-  - [Temporary Files](#temporary-files)
-  - [Pointer Ownership](#pointer-ownership)
-    - [Test-owned memory](#test-owned-memory)
-    - [Function-owned memory](#function-owned-memory)
+- [Examples](#examples)
+  - [`ft_strlen`](#ft_strlen)
+  - [`ft_memcpy`](#ft_memcpy)
+  - [`ft_lstmap`](#ft_lstmap)
+- [Generated C](#generated-c)
+- [Temporary Files](#temporary-files)
+- [Project Configuration](#project-configuration)
+  - [Make](#make)
+  - [Direct Compiler Builds](#direct-compiler-builds)
+  - [Project Includes](#project-includes)
+  - [Compiler Flags](#compiler-flags)
+  - [Libraries](#libraries)
 - [Current Limitations](#current-limitations)
-  - [Function pointers](#function-pointers)
-  - [C type compatibility](#c-type-compatibility)
+  - [Function Pointers](#function-pointers)
+  - [C Type Compatibility](#c-type-compatibility)
 - [API Summary](#api-summary)
-  - [Context](#context)
-  - [Function](#function)
-  - [Call Result](#call-result)
-  - [Capture](#capture)
-  - [Assertions](#assertions-1)
+  - [`TestSuite`](#testsuite)
+  - [`CContext`](#ccontext)
+    - [`c.code()`](#ccode)
+    - [`c.include()`](#cinclude)
+    - [`c.function()`](#cfunction)
+  - [`CCode`](#ccode)
+  - [`CCodeBuilder`](#ccodebuilder)
+  - [Return Value](#return-value)
+  - [Standard Output](#standard-output-1)
+  - [File Descriptors](#file-descriptors-1)
+  - [Values](#values-1)
+  - [Buffers](#buffers-1)
+  - [Malloc](#malloc)
+- [Design Notes](#design-notes)
+- [Pointer Ownership](#pointer-ownership)
+  - [Test-owned memory](#test-owned-memory)
+  - [Function-owned memory](#function-owned-memory)
+- [Debugging Failed Tests](#debugging-failed-tests)
 
 <!-- tocstop -->
 
@@ -85,1116 +78,714 @@ ______________________________________________________________________
 
 # Features
 
-- Call C functions directly from Python.
+- Write C tests directly from Python.
+- Generate complete C test programs automatically.
 - Test return values.
-- Test and compare modified input buffers.
-- Create test-owned C variables and pass pointers to them.
-- Check values of test-owned variables after a function modifies them.
-- Test functions returning allocated memory.
-- Capture returned buffers and pointer arrays.
+- Test standard output.
+- Capture arbitrary file descriptors.
+- Test and compare buffers.
+- Report named values from generated C code.
+- Create test-owned C variables.
+- Add file-scope helper functions to generated tests.
 - Test callbacks and function-pointer arguments.
-- Check `malloc()` call counts and allocation sizes.
+- Check `malloc()` call counts.
+- Check individual allocation sizes.
 - Simulate `malloc()` failures.
 - Run tests with AddressSanitizer.
 - Optionally run generated test programs under a debugger.
 - Configure project-specific headers, libraries, compiler flags, and build commands.
+- Detect memory leaks and invalid memory accesses through AddressSanitizer.
+- Keep test code close to the C being tested instead of hiding behavior behind large Python abstractions.
 
 ______________________________________________________________________
 
 # Basic Usage
 
-A project is represented by a `Project` and a testing context by a `CContext`.
-
-A typical test looks like:
+A test suite is created with `TestSuite`:
 
 ```python
-from framework.ctesting import CContext
+from framework import TestSuite
 
+suite = TestSuite("ft_strlen")
+```
 
-def test_strlen(c):
-    ft_strlen = c.function(
-        "ft_strlen",
-        returns="size_t",
-        args=["char const *"],
+A test receives a `CContext`:
+
+```python
+@suite.case("basic")
+def test_basic(c):
+    test = c.code("""
+        char *str = "hello";
+
+        TEST_VALUE(
+            "length",
+            "%zu",
+            ft_strlen(str)
+        );
+    """)
+
+    test.value("length").equals(
+        "5",
+        "Incorrect string length",
     )
 
-    result = ft_strlen("hello").run()
-
-    result.equals(5)
-    result.assert_now()
+    test.assert_now()
 ```
 
-The `CFunction` object is callable, so:
+The Python code generates a C test program, compiles it against the student's project, runs it, and checks the reported results.
+
+Tests are normally organized into cases:
 
 ```python
-ft_strlen("hello")
+@suite.case("empty")
+def test_empty(c):
+    ...
+
+@suite.case("basic")
+def test_basic(c):
+    ...
+
+@suite.case("long string")
+def test_long(c):
+    ...
 ```
 
-creates a `CCallResult`.
+______________________________________________________________________
 
-The C function is not executed until:
+# Test Suites
+
+A `TestSuite` groups all tests for one function or feature.
 
 ```python
-.run()
+from framework import TestSuite
+
+suite = TestSuite("ft_strlen")
+```
+
+Each test case is registered with:
+
+```python
+@suite.case("case name")
+def test_name(c):
+    ...
+```
+
+The case name is displayed when the test suite runs:
+
+```text
+ft_strlen
+  [PASS] empty
+  [PASS] basic
+  [PASS] long string
+```
+
+A suite can contain as many cases as needed.
+
+This makes it possible to test different properties separately instead of putting every check into one large test.
+
+______________________________________________________________________
+
+# Writing Tests
+
+## C Code
+
+The main way to create a test is `c.code()`.
+
+```python
+test = c.code("""
+    int result = ft_strlen("hello");
+
+    TEST_VALUE(
+        "result",
+        "%d",
+        result
+    );
+""")
+```
+
+`c.code()` contains C code that is placed inside the generated test function.
+
+The code can use functions from the student's project normally:
+
+```python
+test = c.code("""
+    char buffer[20];
+
+    ft_memset(buffer, 'A', 10);
+
+    TEST_BUFFER(
+        "buffer",
+        buffer,
+        10
+    );
+""")
+```
+
+The C code is not executed when `c.code()` is called. It becomes part of the generated test program and is executed when `assert_now()` runs.
+
+______________________________________________________________________
+
+## Standard Output
+
+Standard output can be captured with:
+
+```python
+test = c.code("""
+    ft_putstr_fd("hello", 1);
+""")
+
+test.stdout().equals(
+    b"hello",
+    "Incorrect output",
+)
+
+test.assert_now()
+```
+
+The captured output is returned as bytes.
+
+For example:
+
+```python
+test.stdout().equals(b"hello\n")
+```
+
+checks the exact output, including newlines.
+
+______________________________________________________________________
+
+## Return Values
+
+The return value of the generated test code can be checked with:
+
+```python
+test = c.code("""
+    return 42;
+""")
+
+test.return_value().equals(
+    42,
+    "Incorrect return value",
+)
+
+test.assert_now()
+```
+
+The `return` statement in the generated C test represents the return value of the test code.
+
+It is separate from the process exit status used internally by the test runner.
+
+Multiple assertions can be attached to one test:
+
+```python
+test = c.code("""
+    write(3, "hello", 5);
+    write(4, "world", 5);
+
+    return 42;
+""")
+
+test.fd(3).equals(b"hello")
+test.fd(4).equals(b"world")
+test.return_value().equals(42)
+
+test.assert_now()
+```
+
+______________________________________________________________________
+
+## File Descriptors
+
+Arbitrary file descriptors can be captured with:
+
+```python
+test.fd(3)
+```
+
+For example:
+
+```python
+test = c.code("""
+    write(3, "hello", 5);
+""")
+
+test.fd(3).equals(
+    b"hello",
+    "Incorrect file descriptor output",
+)
+
+test.assert_now()
+```
+
+This is useful for functions such as:
+
+```c
+ft_putchar_fd
+ft_putstr_fd
+ft_putendl_fd
+ft_putnbr_fd
+```
+
+and for testing code that writes directly to a specific descriptor.
+
+______________________________________________________________________
+
+## Values
+
+Generated C code can report arbitrary values using `TEST_VALUE`.
+
+For example:
+
+```python
+test = c.code("""
+    int result = 42;
+
+    TEST_VALUE(
+        "result",
+        "%d",
+        result
+    );
+""")
+```
+
+The Python side can then check the value:
+
+```python
+test.value("result").equals(
+    "42",
+    "Incorrect result",
+)
+```
+
+Values are transferred as strings. The C format string determines how the value is represented.
+
+For example:
+
+```c
+TEST_VALUE("size", "%zu", size);
+TEST_VALUE("pointer", "%p", pointer);
+TEST_VALUE("flag", "%d", flag);
+```
+
+A value must have a unique name within a test.
+
+______________________________________________________________________
+
+## Buffers
+
+Binary buffers can be captured with `TEST_BUFFER`:
+
+```python
+test = c.code("""
+    unsigned char buffer[] = {
+        0x00, 0x01, 0xff, 0x42
+    };
+
+    TEST_BUFFER(
+        "buffer",
+        buffer,
+        sizeof(buffer)
+    );
+""")
+```
+
+The Python side receives the result as `bytes`:
+
+```python
+test.buffer("buffer").equals(
+    b"\x00\x01\xff\x42",
+)
+```
+
+This is useful for testing functions where comparing strings is insufficient.
+
+For example:
+
+```python
+test = c.code("""
+    unsigned char buffer[4] = {
+        0xde, 0xad, 0xbe, 0xef
+    };
+
+    ft_memset(buffer, 0, 2);
+
+    TEST_BUFFER(
+        "buffer",
+        buffer,
+        sizeof(buffer)
+    );
+""")
+
+test.buffer("buffer").equals(
+    b"\x00\x00\xbe\xef",
+)
+```
+
+Zero-length buffers are also supported.
+
+______________________________________________________________________
+
+# Assertions
+
+Assertions are attached to a captured result.
+
+For example:
+
+```python
+test.value("result").equals("42")
+```
+
+does not execute the test immediately.
+
+The test is executed when:
+
+```python
+test.assert_now()
 ```
 
 is called.
 
 ______________________________________________________________________
 
-# Calling Functions
-
-Functions can be obtained explicitly:
-
-```python
-ft_strlen = c.function(
-    "ft_strlen",
-    returns="size_t",
-    args=["char const *"],
-)
-```
-
-or dynamically:
-
-```python
-ft_strlen = c.ft_strlen
-```
-
-When a function is defined in the project's `FunctionConfig`, its configured return type, arguments, headers, libraries, and compiler-error settings are automatically used.
-
-A function can then be called:
-
-```python
-result = ft_strlen("hello").run()
-```
-
-The number of arguments is checked before the C test harness is generated.
-
-______________________________________________________________________
-
-# Return Values
-
 ## `equals()`
 
-Checks a normal return value.
+`equals()` checks that the actual result exactly matches the expected result.
 
 ```python
-c.ft_strlen("hello").run().equals(5).assert_now()
+test.value("result").equals("42")
 ```
 
-A custom error message can be supplied:
+For buffers:
 
 ```python
-c.ft_strlen("hello").run().equals(
-    5,
-    "strlen returned the wrong length",
-).assert_now()
+test.buffer("buffer").equals(b"hello")
 ```
 
-`equals()` should not be used for `bytes`.
-
-For buffers, use `buffer_equals()` or return captures instead.
-
-______________________________________________________________________
-
-## `not_equal()`
-
-Checks that the return value is not equal to a value.
+For return values:
 
 ```python
-c.ft_strlen("hello").run().not_equal(10).assert_now()
+test.return_value().equals(0)
 ```
 
-______________________________________________________________________
-
-## `parsed_value`
-
-The raw return value is stored internally as text.
-
-`parsed_value` converts it using the configured C return type:
+An optional message can explain the failure:
 
 ```python
-result = c.ft_strlen("hello").run()
-
-print(result.parsed_value)
-```
-
-______________________________________________________________________
-
-## String Returns
-
-For functions returning strings:
-
-```python
-result = c.some_string_function().run()
-
-result.equals_string("hello")
-result.assert_now()
-```
-
-______________________________________________________________________
-
-## NULL Checks
-
-For pointer-returning functions, simple NULL checks are available:
-
-```python
-result = c.some_function().run()
-
-result.is_null()
-result.assert_now()
-```
-
-or:
-
-```python
-result = c.some_function().run()
-
-result.is_not_null()
-result.assert_now()
-```
-
-______________________________________________________________________
-
-# Buffers
-
-`CBuffer` represents an array allocated by the test harness and passed to the student's function.
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-)
-```
-
-The generated C code contains an array initialized with the supplied data.
-
-For example:
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-)
-
-c.ft_strcpy(buffer, "world").run()
-```
-
-The buffer remains owned by the test harness and can be inspected after the function call.
-
-______________________________________________________________________
-
-## Buffer Size
-
-The size can be larger than the initial data:
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    size=32,
-    name="buffer",
-)
-```
-
-The remaining bytes are zero-initialized by C.
-
-The supplied data cannot be larger than the buffer:
-
-```python
-c.buffer(
-    data=b"hello",
-    size=3,
-)
-```
-
-raises an error.
-
-Zero-sized C buffers are currently not supported.
-
-______________________________________________________________________
-
-## Buffer Types
-
-The default type is:
-
-```text
-unsigned char
-```
-
-A different C type can be supplied:
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-    type="char",
+test.value("result").equals(
+    "42",
+    "Incorrect result",
 )
 ```
 
 ______________________________________________________________________
 
-## Buffer Offsets
+## `reference()`
 
-A pointer into a buffer can be created with:
-
-```python
-buffer.offset(2)
-```
-
-For example:
+A result can be marked as a reference:
 
 ```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-)
-
-pointer = buffer.offset(2)
-
-c.some_function(pointer)
+test.value("result").equals("42").reference()
 ```
 
-The generated C argument is equivalent to:
+Reference assertions are used when the result of the student's implementation is compared against a reference implementation.
+
+A mismatch is reported as an unexpected result rather than a normal test failure.
+
+`reference()` only marks the assertion. It does not execute the test.
+
+______________________________________________________________________
+
+## `assert_now()`
+
+`assert_now()` executes the generated test and evaluates all assertions attached to it.
+
+```python
+test = c.code("""
+    TEST_VALUE(
+        "result",
+        "%d",
+        42
+    );
+""")
+
+test.value("result").equals("42")
+
+test.assert_now()
+```
+
+Multiple assertions can be attached before calling `assert_now()`:
+
+```python
+test.value("value").equals("42")
+test.buffer("buffer").equals(b"hello")
+test.return_value().equals(0)
+
+test.assert_now()
+```
+
+______________________________________________________________________
+
+# Test-Owned C Code
+
+Tests often need C variables or helper functions that exist outside the function being tested.
+
+The framework provides methods for adding these directly to the generated program.
+
+______________________________________________________________________
+
+## Variables
+
+Test-owned variables can be created when constructing C code.
+
+For example, a test can allocate and initialize data directly in C:
+
+```python
+test = c.code("""
+    int value = 42;
+
+    TEST_VALUE(
+        "value",
+        "%d",
+        value
+    );
+""")
+```
+
+The test owns `value`, so it is responsible for ensuring any dynamically allocated memory is cleaned up.
+
+______________________________________________________________________
+
+## Helper Functions
+
+Some functions require callbacks:
 
 ```c
-buffer + 2
+void ft_lstiter(t_list *lst, void (*f)(void *));
 ```
 
-An offset from `0` through `buffer.size` is allowed.
-
-The offset equal to `buffer.size` represents the one-past-the-end pointer.
-
-______________________________________________________________________
-
-# Test-Owned Variables
-
-`CPointer` represents a C variable owned by the test harness.
-
-It is useful when a function expects a pointer to a variable rather than a pointer to an array.
-
-For example, given:
-
-```c
-void test_pointer(int *value);
-```
-
-a test can create an `int` variable and pass its address:
+These callbacks can be defined as file-scope helper functions with `function()`:
 
 ```python
-value = c.pointer(
-    "int",
-    10,
-    name="value",
-)
+test = (
+    c.include("libft.h")
+    .function("""
+        static int __calls;
 
-result = c.test_pointer(value).run()
-```
+        static void test_f(void *content)
+        {
+            int *value = content;
 
-The generated C code is equivalent to:
+            (*value)++;
+            __calls++;
+        }
+    """)
+    .code("""
+        int value = 41;
 
-```c
-int value = 10;
+        t_list node;
 
-test_pointer(&value);
-```
+        node.content = &value;
+        node.next = NULL;
 
-Unlike `Capture`, a `CPointer` is test-owned memory. The student's function is allowed to modify the variable, and the test can inspect the result afterward.
+        ft_lstiter(&node, test_f);
 
-______________________________________________________________________
+        TEST_VALUE(
+            "value",
+            "%d",
+            value
+        );
 
-## Creating a Variable
-
-Create a test-owned variable with:
-
-```python
-value = c.pointer(
-    "int",
-    10,
-    name="value",
+        TEST_VALUE(
+            "calls",
+            "%d",
+            __calls
+        );
+    """)
 )
 ```
 
-The arguments are:
+Helper functions are emitted at file scope before the generated test function.
+
+This allows them to be used as normal C function pointers.
+
+______________________________________________________________________
+
+## Includes
+
+Additional headers can be added with:
 
 ```python
-c.pointer(
-    type,
-    value,
-    name=...,
+test = c.include(
+    "stdlib.h",
+    "string.h",
 )
 ```
 
 For example:
 
 ```python
-number = c.pointer(
-    "int",
-    42,
-    name="number",
+test = (
+    c.include(
+        "libft.h",
+        "stdlib.h",
+        "string.h",
+    )
+    .code("""
+        ...
+    """)
 )
 ```
 
-The generated C declaration is:
-
-```c
-int number = 42;
-```
-
-When passed to a function, the framework automatically passes its address:
-
-```python
-c.some_function(number)
-```
-
-which generates:
-
-```c
-some_function(&number);
-```
-
-This means the test does not need to manually write `&`.
-
-______________________________________________________________________
-
-## Checking a Variable
-
-After the function runs, the value of a test-owned variable can be checked with `variable_equals()`:
-
-```python
-value = c.pointer(
-    "int",
-    10,
-    name="value",
-)
-
-result = c.test_pointer(value).run()
-
-result.variable_equals(
-    value,
-    42,
-)
-
-result.assert_now()
-```
-
-For:
-
-```c
-void test_pointer(int *value)
-{
-    *value = 42;
-}
-```
-
-the test verifies that the function changed:
-
-```text
-10 -> 42
-```
-
-A custom message can be supplied:
-
-```python
-result.variable_equals(
-    value,
-    42,
-    "function did not modify value correctly",
-)
-```
-
-`variable_equals()` is intended for checking test-owned variables after the function has modified them.
-
-______________________________________________________________________
-
-# Checking Modified Buffers
-
-After a test runs, buffers passed to the function are copied back and can be checked with:
-
-```python
-result.buffer_equals(
-    buffer,
-    b"expected",
-)
-```
-
-Example:
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-)
-
-result = c.some_function(buffer).run()
-
-result.buffer_equals(
-    buffer,
-    b"world",
-)
-
-result.assert_now()
-```
-
-A byte-level diff is included when the contents differ.
-
-______________________________________________________________________
-
-# Returned Allocated Memory
-
-Functions that return pointers can have their returned memory captured.
-
-Use:
-
-```python
-Capture.buffer(size)
-```
-
-For example:
-
-```python
-from framework.ctesting import Capture, Assert
-
-expected = b"hello"
-
-result = c.ft_strdup(expected).capture_return(
-    Capture.buffer(len(expected))
-).run()
-
-result.assert_return(
-    Assert.buffer_equals(expected),
-)
-
-result.assert_now()
-```
-
-The harness reads the returned memory and then frees it.
-
-This is intended for functions where the returned pointer represents memory owned by the caller.
-
-For example:
-
-```c
-char *ft_strdup(const char *s);
-```
-
-can be tested by capturing the returned buffer.
-
-______________________________________________________________________
-
-# Capture Types
-
-Captures describe memory returned by the student's function.
-
-They are different from `CBuffer` and `CPointer`:
-
-- `CBuffer` is test-owned array memory.
-- `CPointer` is a test-owned C variable.
-- `Capture` describes memory owned by the function and returned to the test.
-
-______________________________________________________________________
-
-## `Capture.buffer(size)`
-
-Captures `size` bytes from the returned pointer.
-
-```python
-Capture.buffer(10)
-```
-
-The returned pointer must be non-NULL to produce a buffer capture.
-
-A size of zero is allowed for return captures.
-
-The captured allocation is freed by the generated harness.
-
-______________________________________________________________________
-
-## `Capture.pointer_raw()`
-
-Captures only the returned pointer value.
-
-```python
-Capture.pointer_raw()
-```
-
-This does **not** dereference the pointer.
-
-It is useful when testing pointer-returning functions where the pointer itself matters, especially during `malloc()` failure testing.
-
-A raw pointer capture is not automatically freed by the harness.
-
-______________________________________________________________________
-
-## `Capture.pointer_array(size)`
-
-Captures an array of pointers.
-
-Each array element needs a child capture:
-
-```python
-capture = Capture.pointer_array(3)
-
-capture.child(Capture.buffer(5))
-capture.child(Capture.buffer(5))
-capture.child(Capture.buffer(5))
-```
-
-The number of children must exactly match the array size.
-
-The returned pointer array and captured child allocations are freed by the harness according to the capture structure.
-
-______________________________________________________________________
-
-# Assertions
-
-Assertions are represented by `Assert`.
-
-## Buffer Equality
-
-```python
-Assert.buffer_equals(b"hello")
-```
-
-______________________________________________________________________
-
-## Pointer Equality
-
-```python
-Assert.pointer_equals(expected_pointer)
-```
-
-______________________________________________________________________
-
-## NULL Pointer
-
-```python
-Assert.is_null_pointer()
-```
-
-______________________________________________________________________
-
-## Non-NULL Pointer
-
-```python
-Assert.is_not_null_pointer()
-```
-
-______________________________________________________________________
-
-## Pointer Arrays
-
-Pointer-array assertions are built using child assertions:
-
-```python
-assertion = Assert.pointer_array()
-
-assertion.child(
-    Assert.buffer_equals(b"hello")
-)
-
-assertion.child(
-    Assert.buffer_equals(b"world")
-)
-```
-
-Then:
-
-```python
-result.assert_return(assertion)
-```
-
-______________________________________________________________________
-
-# Return Capture Assertions
-
-A return capture must be configured before running the call:
-
-```python
-result = (
-    c.ft_strdup("hello")
-    .capture_return(Capture.buffer(5))
-    .run()
-)
-
-result.assert_return(
-    Assert.buffer_equals(b"hello")
-)
-
-result.assert_now()
-```
-
-`capture_return()` can only be used with pointer-returning functions.
-
-______________________________________________________________________
-
-# Checking Returned Pointers
-
-The framework records the addresses of `CBuffer` objects passed into the function.
-
-This allows testing whether a function returned a pointer to a particular buffer:
-
-```python
-buffer = c.buffer(
-    data=b"hello",
-    name="buffer",
-)
-
-result = c.some_function(buffer).run()
-
-result.returned_pointer_is(buffer)
-result.assert_now()
-```
-
-Buffer offsets are also supported:
-
-```python
-result.returned_pointer_is(buffer.offset(2))
-```
-
-This checks that the returned pointer equals the address of the buffer plus the requested offset.
-
-______________________________________________________________________
-
-# Callbacks
-
-Functions accepting function pointers can be tested with `CCallback`.
-
-For example, for:
-
-```c
-char *ft_strmapi(
-    char const *s,
-    char (*f)(unsigned int, char)
-);
-```
-
-define a callback:
-
-```python
-increment = c.callback(
-    name="increment",
-    returns="char",
-    args=[
-        ("unsigned int", "i"),
-        ("char", "c"),
-    ],
-    body="return c + i;",
-)
-```
-
-Then pass it to the function:
-
-```python
-result = c.ft_strmapi(
-    "abc",
-    increment,
-).run()
-```
-
-The generated C harness contains:
-
-```c
-static char increment(unsigned int i, char c)
-{
-    return c + i;
-}
-```
-
-Callback argument types are checked against the function's declared function-pointer type.
-
-______________________________________________________________________
-
-## Callback Names
-
-Callback names must be valid identifiers.
-
-Each callback must have an explicit name:
-
-```python
-c.callback(
-    name="increment",
-    ...
-)
-```
-
-Multiple callbacks can therefore be used in one test:
-
-```python
-first = c.callback(
-    name="first",
-    returns="char",
-    args=[("char", "c")],
-    body="return c + 1;",
-)
-
-second = c.callback(
-    name="second",
-    returns="char",
-    args=[("char", "c")],
-    body="return c - 1;",
-)
-```
-
-Callback names must not conflict with generated harness names or the function being tested.
+Includes are inserted into the generated C program.
 
 ______________________________________________________________________
 
 # Malloc Testing
 
-The framework intercepts `malloc()` using the linker:
+The framework can intercept `malloc()` calls made by the generated test program.
 
-```text
--Wl,--wrap=malloc
-```
-
-This allows the framework to record:
-
-- number of `malloc()` calls
-- size of every allocation
-- controlled allocation failures
+This allows tests to check both normal allocation behavior and allocation-failure handling.
 
 ______________________________________________________________________
 
 ## Malloc Count
 
-```python
-result = c.some_function(...).run()
+The number of successful allocations can be checked with:
 
-result.malloc_count_equals(1)
-result.assert_now()
+```python
+test.malloc.count(
+    4,
+    "Test malloc count",
+)
 ```
+
+For example, if a test creates three list nodes and three separate content allocations:
+
+```python
+test.malloc.count(
+    6,
+    "Test malloc count",
+)
+```
+
+This can detect unexpected allocations as well as missing allocations.
 
 ______________________________________________________________________
 
 ## Malloc Size
 
-Check an individual allocation:
+Individual allocation sizes can be checked:
 
 ```python
-result.malloc_size_equals(
+test.malloc.size(
     0,
-    42,
+    16,
+    "Incorrect first allocation size",
 )
 ```
 
-The index is zero-based.
+The allocation index starts at zero.
 
 For example:
 
 ```python
-result.malloc_count_equals(2)
-result.malloc_size_equals(0, 16)
-result.malloc_size_equals(1, 32)
+test.malloc.size(0, 16)
+test.malloc.size(1, 32)
 ```
+
+checks the first two successful allocations.
+
+This is useful for functions such as `ft_calloc`, `ft_strdup`, and `ft_lstnew`.
 
 ______________________________________________________________________
 
 # Simulating Malloc Failures
 
-A specific `malloc()` call can be forced to fail:
+The framework can force a particular `malloc()` allocation to fail.
 
-```python
-c.malloc.fail_at(0)
+The generated C test can reset the malloc strike state:
+
+```c
+malloc_strike_reset();
 ```
 
-This makes the first intercepted `malloc()` return `NULL`.
+and configure a failure:
+
+```c
+malloc_strike_fail_at(3);
+```
+
+This causes the selected allocation to fail.
 
 For example:
 
 ```python
-c.malloc.fail_at(0)
+test = c.code("""
+    malloc_strike_reset();
+    malloc_strike_fail_at(0);
 
-result = c.ft_strdup("hello").run()
+    void *ptr = malloc(100);
 
-result.is_null()
-result.assert_now()
-
-c.malloc.reset()
+    TEST_VALUE(
+        "null",
+        "%d",
+        ptr == NULL
+    );
+""")
 ```
 
-The failure index is zero-based.
+This is especially useful for testing cleanup paths.
 
-`reset()` removes the failure condition:
+For example, `ft_lstmap` needs to clean up already-created nodes if allocation of a later node fails.
 
-```python
-c.malloc.reset()
-```
+A failure test can therefore verify both:
 
-______________________________________________________________________
-
-## Malloc Failure Sweeps
-
-For functions performing multiple allocations, tests can run the function repeatedly while changing the failure index:
-
-```python
-for index in range(expected_malloc_count):
-    c.malloc.fail_at(index)
-
-    result = c.some_function(...).run()
-
-    # Check expected failure behavior.
-
-c.malloc.reset()
-```
-
-When using AddressSanitizer, this can also detect memory leaks and invalid memory accesses caused by incomplete error handling.
-
-For pointer-returning functions during malloc-failure tests, `Capture.pointer_raw()` is useful because it records the pointer without dereferencing or automatically freeing it.
-
-______________________________________________________________________
-
-# `assert_now()` vs `assert_reference()`
-
-Both methods check accumulated assertion failures.
-
-## `assert_now()`
-
-Use this when the test itself is asserting expected behavior:
-
-```python
-result.equals(5)
-result.assert_now()
-```
-
-Failures raise:
-
-```text
-AssertionFailure
-```
-
-______________________________________________________________________
-
-## `assert_reference()`
-
-Use this when comparing the student's behavior against a reference implementation:
-
-```python
-result.assert_reference()
-```
-
-Failures raise:
-
-```text
-UnexpectedResult
-```
-
-This allows the test runner to distinguish:
-
-- an explicit test assertion failure
-- a result that differs unexpectedly from the reference implementation
-
-______________________________________________________________________
-
-# Chaining
-
-Most result-checking methods return the `CCallResult`, so checks can be chained:
-
-```python
-(
-    c.ft_strlen("hello")
-    .run()
-    .equals(5)
-    .not_equal(10)
-    .assert_now()
-)
-```
-
-The call itself must always be executed with `.run()` before result-dependent methods are used.
-
-______________________________________________________________________
-
-# Project Configuration
-
-The framework uses a `Project` configuration.
-
-A simplified configuration looks like:
-
-```python
-Project(
-    name="libft",
-    build=BuildConfig(
-        method="make",
-    ),
-    functions=FunctionConfig(
-        functions={
-            "ft_strlen": FunctionDefinition(
-                returns="size_t",
-                args=["char const *"],
-            ),
-        },
-    ),
-)
-```
-
-Function definitions can specify:
-
-```python
-FunctionDefinition(
-    returns="char *",
-    args=["char const *"],
-    headers=["libft.h"],
-    link=[],
-    err_flags=True,
-)
-```
-
-______________________________________________________________________
-
-# Headers
-
-Headers required by a function can be configured:
-
-```python
-FunctionDefinition(
-    returns="size_t",
-    args=["char const *"],
-    headers=["libft.h"],
-)
-```
-
-The generated harness will include:
-
-```c
-#include <libft.h>
-```
-
-When headers are not configured, the framework generates an `extern` declaration for the function.
-
-______________________________________________________________________
-
-# Project Includes
-
-Project-wide include directories can be configured using:
-
-```python
-FunctionConfig(
-    includes=[
-        "include",
-    ],
-)
-```
-
-These are passed to the generated harness as:
-
-```text
--I <project>/include
-```
-
-______________________________________________________________________
-
-# Compiler Flags
-
-Project-wide flags for compiling the generated test harness are configured with:
-
-```python
-FunctionConfig(
-    cflags=[
-        "-D_SOME_DEFINE",
-    ],
-)
-```
-
-These flags are applied when compiling the generated test program.
-
-______________________________________________________________________
-
-# Libraries
-
-Project-wide libraries/objects can be specified using:
-
-```python
-FunctionConfig(
-    link=[
-        "libft.a",
-    ],
-)
-```
-
-Function-specific libraries can be configured with:
-
-```python
-FunctionDefinition(
-    link=["m"],
-)
-```
-
-Function-specific libraries are passed as:
-
-```text
--lm
-```
-
-______________________________________________________________________
-
-# Build Configuration
-
-The project build configuration supports:
-
-```python
-BuildConfig(
-    method="make",
-    target=None,
-    compiler="cc",
-    flags=[],
-    sources=[],
-    output="a.out",
-)
-```
+- the function returns `NULL`
+- all previously allocated resources are released
 
 ______________________________________________________________________
 
 # AddressSanitizer
 
-ASan can be enabled when creating the testing context:
+Tests can be executed with AddressSanitizer enabled.
 
-```python
-c = CContext(
-    project,
-    config,
-    asan=True,
-)
-```
+AddressSanitizer can detect:
 
-The framework builds the project with:
-
-```text
--fsanitize=address
--fno-omit-frame-pointer
-```
-
-and also compiles the generated test harness with ASan.
-
-ASan errors are reported as test failures.
-
-ASan is particularly useful for:
-
-- buffer overflows
-- use-after-free
-- invalid memory accesses
 - memory leaks
-- incorrect malloc-failure cleanup
+- use-after-free
+- buffer overflows
+- invalid memory accesses
+- other memory errors
+
+For example, a test that forgets to free an allocated list will produce an AddressSanitizer error rather than silently passing.
+
+This is particularly useful for list functions and allocation-failure tests where ownership can become complicated.
+
+A test is considered an error if AddressSanitizer reports a runtime memory error.
 
 ______________________________________________________________________
 
 # Debug Mode
 
-Debug mode can be enabled with:
+Generated test programs can optionally be run under a debugger.
 
-```python
-c = CContext(
-    project,
-    config,
-    debug=True,
-)
+Debug mode prints the generated C program before execution and exposes the program output.
+
+A typical debug output looks like:
+
+```text
+──────────────────── C CODE ────────────────────
+[yellow generated C code]
+────────────────────────────────────────────────
+
+[DEBUG] Program output
+────────────────────────────────────
+...
+────────────────────────────────────
+
+[PASS]
 ```
 
-Debug mode prints:
-
-- build commands
-- generated C test harnesses
-- additional execution information
-
-The generated test executable is run through the framework's debug-process helper.
+This is useful when a test fails during development and the generated C needs to be inspected.
 
 ______________________________________________________________________
 
@@ -1203,277 +794,759 @@ ______________________________________________________________________
 A typical test follows this sequence:
 
 ```text
-Create CContext
-       |
-       v
-Get CFunction
-       |
-       v
-Create arguments / buffers / variables / callbacks
-       |
-       v
-Create CCallResult
-       |
-       v
-Configure return capture if needed
-       |
-       v
-.run()
-       |
-       v
-Generate C harness
-       |
-       v
-Compile harness
-       |
-       v
-Execute C function
-       |
-       v
-Capture return value / buffers / variables / malloc information
-       |
-       v
-Perform assertions
-       |
-       v
-.assert_now() / .assert_reference()
+Python test
+    |
+    v
+Generate C code
+    |
+    v
+Add includes/helpers
+    |
+    v
+Compile
+    |
+    v
+Run generated program
+    |
+    +--> Capture stdout
+    +--> Capture file descriptors
+    +--> Capture values
+    +--> Capture buffers
+    +--> Capture return value
+    +--> Track malloc
+    |
+    v
+Evaluate assertions
+    |
+    v
+PASS / FAIL / UNEXPECTED / ERROR
+```
+
+The important distinction is that constructing a test does not immediately execute the student's function.
+
+For example:
+
+```python
+test = c.code("""
+    ...
+""")
+
+test.value("result").equals("42")
+```
+
+only constructs the test and its assertions.
+
+Execution happens at:
+
+```python
+test.assert_now()
 ```
 
 ______________________________________________________________________
 
-# Example: `ft_strmapi`
+# Examples
 
-Given:
+## `ft_strlen`
 
-```c
-char *ft_strmapi(
-    char const *s,
-    char (*f)(unsigned int, char)
-);
-```
-
-a test can be written as:
+A simple return-value test:
 
 ```python
-from framework.ctesting import Capture, Assert
+from framework import TestSuite
+
+suite = TestSuite("ft_strlen")
 
 
-def test_ft_strmapi(c):
-    increment = c.callback(
-        name="increment",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="return c + i;",
+@suite.case("basic")
+def test_basic(c):
+    test = c.code("""
+        TEST_VALUE(
+            "result",
+            "%zu",
+            ft_strlen("hello")
+        );
+    """)
+
+    test.value("result").equals(
+        "5",
+        "Incorrect string length",
     )
 
-    expected = b"ace"
+    test.assert_now()
+```
 
-    result = c.ft_strmapi(
-        "abc",
-        increment,
-    ).capture_return(
-        Capture.buffer(len(expected))
-    ).run()
+______________________________________________________________________
 
-    result.assert_return(
-        Assert.buffer_equals(expected),
-        "ft_strmapi returned incorrect string",
+## `ft_memcpy`
+
+A buffer can be checked after calling the function:
+
+```python
+@suite.case("basic")
+def test_basic(c):
+    test = c.code("""
+        char source[] = "hello";
+        char destination[6];
+
+        ft_memcpy(
+            destination,
+            source,
+            sizeof(source)
+        );
+
+        TEST_BUFFER(
+            "destination",
+            destination,
+            sizeof(destination)
+        );
+    """)
+
+    test.buffer("destination").equals(
+        b"hello\x00",
+        "Incorrect copied buffer",
     )
 
-    result.assert_now()
+    test.assert_now()
+```
+
+______________________________________________________________________
+
+## `ft_lstmap`
+
+Functions involving callbacks can define helper functions at file scope.
+
+```python
+@suite.case("basic")
+def test_basic(c):
+    test = (
+        c.include(
+            "libft.h",
+            "stdlib.h",
+        )
+        .function("""
+        static void *test_f(void *content)
+        {
+            int *value = content;
+            int *result = malloc(sizeof(int));
+
+            if (result == NULL)
+                return NULL;
+
+            *result = *value + 100;
+            return result;
+        }
+
+        static void test_del(void *content)
+        {
+            free(content);
+        }
+        """)
+        .code("""
+        int value = 42;
+
+        t_list node;
+
+        node.content = &value;
+        node.next = NULL;
+
+        t_list *mapped = ft_lstmap(
+            &node,
+            test_f,
+            test_del
+        );
+
+        TEST_VALUE(
+            "result",
+            "%d",
+            mapped != NULL
+            && *(int *)mapped->content == 142
+        );
+
+        if (mapped != NULL)
+        {
+            free(mapped->content);
+            free(mapped);
+        }
+        """)
+    )
+
+    test.value("result").equals(
+        "1",
+        "Incorrect mapped list",
+    )
+
+    test.assert_now()
+```
+
+For more complicated functions, tests should explicitly verify ownership, node addresses, links, content pointers, and cleanup behavior rather than checking only the returned value.
+
+______________________________________________________________________
+
+# Generated C
+
+The framework generates a complete temporary C source file for each test.
+
+Conceptually, the generated program looks like:
+
+```c
+#include <...>
+#include "libft.h"
+
+static void helper_function(...)
+{
+    ...
+}
+
+static int __test_code(void)
+{
+    ...
+}
+
+int main(void)
+{
+    ...
+}
+```
+
+User-defined helper functions are emitted at file scope.
+
+The test code passed to `c.code()` is placed inside the generated test function.
+
+The framework also inserts the required capture and malloc-testing infrastructure.
+
+The generated source can be printed in debug mode when investigating a failing test.
+
+______________________________________________________________________
+
+# Temporary Files
+
+Generated test programs and their build artifacts are stored in temporary directories.
+
+A typical generated test might be located at:
+
+```text
+/tmp/tmpxxxxxx/test.c
+```
+
+The temporary directory contains the generated source and executable required to run the test.
+
+Temporary files are not part of the student's project.
+
+______________________________________________________________________
+
+# Project Configuration
+
+Projects are represented by a `Project` object.
+
+A project specifies:
+
+- project name
+- build method
+- build options
+- test includes
+- compiler flags
+- libraries
+- test files
+
+For example:
+
+```python
+from framework import BuildConfig, Project
+
+project = Project(
+    name="libft",
+    build=BuildConfig(
+        method="make",
+        target="all",
+    ),
+)
+```
+
+______________________________________________________________________
+
+## Make
+
+The default build method uses `make`.
+
+```python
+BuildConfig(
+    method="make",
+)
+```
+
+A specific target can be selected:
+
+```python
+BuildConfig(
+    method="make",
+    target="bonus",
+)
+```
+
+The framework executes:
+
+```text
+make
+```
+
+or:
+
+```text
+make bonus
+```
+
+in the project directory.
+
+______________________________________________________________________
+
+## Direct Compiler Builds
+
+Projects can also be compiled directly with a C compiler:
+
+```python
+BuildConfig(
+    method="cc",
+    compiler="cc",
+    flags=[
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+    sources=[
+        "main.c",
+        "foo.c",
+    ],
+    output="a.out",
+)
+```
+
+The generated command is conceptually:
+
+```text
+cc -Wall -Wextra -Werror main.c foo.c -o a.out
+```
+
+The compiler can be changed:
+
+```python
+BuildConfig(
+    method="cc",
+    compiler="gcc",
+)
+```
+
+or:
+
+```python
+BuildConfig(
+    method="cc",
+    compiler="clang",
+)
+```
+
+______________________________________________________________________
+
+## Project Includes
+
+Project-specific headers can be configured through the test configuration:
+
+```python
+TestConfig(
+    includes=[
+        "libft.h",
+    ],
+)
+```
+
+Individual tests can also add headers using:
+
+```python
+c.include(
+    "stdlib.h",
+    "string.h",
+)
+```
+
+______________________________________________________________________
+
+## Compiler Flags
+
+Additional compiler flags can be configured through `TestConfig`:
+
+```python
+TestConfig(
+    cflags=[
+        "-Wall",
+        "-Wextra",
+    ],
+)
+```
+
+Build flags and test-specific compiler flags are kept separate so that project compilation and generated test compilation can be configured independently.
+
+______________________________________________________________________
+
+## Libraries
+
+Libraries required when compiling generated tests can be specified through the project configuration.
+
+For example:
+
+```python
+TestConfig(
+    link=[
+        "-lm",
+    ],
+)
+```
+
+The resulting test command links the generated test program against the specified libraries.
+
+______________________________________________________________________
+
+# Current Limitations
+
+## Function Pointers
+
+Function-pointer arguments are supported through file-scope helper functions.
+
+For example:
+
+```python
+.function("""
+    static void test_callback(void *content)
+    {
+        ...
+    }
+""")
+```
+
+The helper can then be passed normally:
+
+```c
+ft_lstiter(lst, test_callback);
+```
+
+Function pointers are not represented as ordinary Python values.
+
+______________________________________________________________________
+
+## C Type Compatibility
+
+The framework generates real C code and relies on the C compiler for type checking.
+
+The Python API does not attempt to completely model the C type system.
+
+When testing complicated types, structs, callbacks, or pointer conversions, it is generally better to write the required C directly inside `c.code()` and let the compiler validate it.
+
+______________________________________________________________________
+
+# API Summary
+
+## `TestSuite`
+
+```python
+suite = TestSuite("ft_strlen")
+```
+
+Register a test case:
+
+```python
+@suite.case("basic")
+def test_basic(c):
+    ...
+```
+
+______________________________________________________________________
+
+## `CContext`
+
+The test context provides methods for constructing generated C code.
+
+### `c.code()`
+
+```python
+test = c.code("""
+    ...
+""")
+```
+
+### `c.include()`
+
+```python
+test = c.include(
+    "stdlib.h",
+    "string.h",
+)
+```
+
+### `c.function()`
+
+```python
+test = c.function("""
+    static void helper(void)
+    {
+        ...
+    }
+""")
+```
+
+`include()` and `function()` can be chained with `code()`:
+
+```python
+test = (
+    c.include("libft.h", "stdlib.h")
+    .function("""
+        static void helper(void)
+        {
+            ...
+        }
+    """)
+    .code("""
+        ...
+    """)
+)
+```
+
+______________________________________________________________________
+
+## `CCode`
+
+`c.code()` returns a `CCode` object.
+
+It supports assertions on captured results:
+
+```python
+test.stdout()
+test.fd(3)
+test.value("name")
+test.buffer("name")
+test.return_value()
+test.malloc
+```
+
+The test is executed with:
+
+```python
+test.assert_now()
+```
+
+______________________________________________________________________
+
+## `CCodeBuilder`
+
+Helper functions can be added before generating the test:
+
+```python
+test = (
+    c.include("libft.h")
+    .function("""
+        static void helper(void)
+        {
+            ...
+        }
+    """)
+    .code("""
+        ...
+    """)
+)
+```
+
+`function()` can be called multiple times to add multiple helpers.
+
+______________________________________________________________________
+
+## Return Value
+
+```python
+test.return_value()
+```
+
+Example:
+
+```python
+test.return_value().equals(
+    42,
+    "Incorrect return value",
+)
+```
+
+______________________________________________________________________
+
+## Standard Output
+
+```python
+test.stdout()
+```
+
+Example:
+
+```python
+test.stdout().equals(
+    b"hello\n",
+)
+```
+
+______________________________________________________________________
+
+## File Descriptors
+
+```python
+test.fd(3)
+```
+
+Example:
+
+```python
+test.fd(3).equals(
+    b"hello",
+)
+```
+
+______________________________________________________________________
+
+## Values
+
+```python
+test.value("name")
+```
+
+Example:
+
+```python
+test.value("result").equals(
+    "42",
+)
+```
+
+______________________________________________________________________
+
+## Buffers
+
+```python
+test.buffer("name")
+```
+
+Example:
+
+```python
+test.buffer("buffer").equals(
+    b"\x00\x01\x02",
+)
+```
+
+______________________________________________________________________
+
+## Malloc
+
+```python
+test.malloc.count(4)
+test.malloc.size(0, 16)
+test.malloc.fail_at(3)
+```
+
+Malloc failures can also be configured directly inside generated C:
+
+```c
+malloc_strike_reset();
+malloc_strike_fail_at(3);
 ```
 
 ______________________________________________________________________
 
 # Design Notes
 
-## Generated C
+The framework intentionally keeps a large part of the test logic in generated C.
 
-Tests are not interpreted as C directly.
+This has several advantages:
 
-Instead, the framework generates a temporary C source file containing:
+- C types are handled by the C compiler.
+- Structs can be tested naturally.
+- Function pointers work like normal C function pointers.
+- Pointer identity can be compared directly.
+- Complex ownership and cleanup behavior can be tested.
+- The framework does not need to reimplement the C type system in Python.
 
-- required headers
-- callback definitions
-- function declarations
-- test arguments
-- test-owned buffers
-- test-owned variables
-- the function call
-- buffer capture code
-- variable capture code
-- malloc information
-- return-value output
-- cleanup code
+Python is primarily responsible for:
 
-The generated source is then compiled and executed.
+- generating the test
+- configuring the build
+- running the executable
+- capturing results
+- evaluating assertions
+- presenting failures
 
-For example, this Python:
-
-```python
-value = c.pointer(
-    "int",
-    10,
-    name="value",
-)
-
-c.test_pointer(value).run()
-```
-
-generates C equivalent to:
-
-```c
-int value = 10;
-
-test_pointer(&value);
-```
-
-The framework then records the value of `value` after the function returns.
+The actual behavior being tested remains ordinary C code.
 
 ______________________________________________________________________
 
-## Temporary Files
+# Pointer Ownership
 
-Generated harnesses and captured buffer data are stored in a temporary directory.
+Tests should explicitly consider ownership of dynamically allocated memory.
 
-The directory is automatically removed after the test finishes.
+## Test-owned memory
 
-______________________________________________________________________
-
-## Pointer Ownership
-
-The framework distinguishes between test-owned and function-owned memory.
-
-### Test-owned memory
-
-`CBuffer` and `CPointer` create variables owned by the test harness.
-
-The student's function may read or modify this memory, but the harness remains responsible for it.
-
-### Function-owned memory
-
-`Capture` describes memory returned by the student's function.
-
-`Capture.buffer()` and pointer-array captures cause the generated harness to free the captured allocations.
-
-`Capture.pointer_raw()` intentionally does not free the pointer.
-
-This distinction is important when testing allocation failures or when a returned pointer must only be observed rather than dereferenced.
-
-______________________________________________________________________
-
-# Current Limitations
-
-The current implementation intentionally keeps the type system and C parser simple.
-
-## Function pointers
-
-Function-pointer declarations currently support simple forms such as:
-
-```c
-char (*)(unsigned int, char)
-```
-
-Complex nested function-pointer types are not currently fully parsed.
-
-## C type compatibility
-
-Callback types are currently compared using their textual representation.
+If the test allocates memory, the test is responsible for freeing it.
 
 For example:
 
 ```c
-const char *
+int *value = malloc(sizeof(int));
+
+/* test */
+
+free(value);
 ```
 
-and:
+This is particularly important because AddressSanitizer reports leaks even when the function being tested is correct.
+
+## Function-owned memory
+
+If a function returns newly allocated memory, the test is responsible for freeing it after checking the result.
+
+For example:
 
 ```c
-char const *
+char *result = ft_strdup("hello");
+
+TEST_BUFFER(
+    "result",
+    result,
+    strlen(result)
+);
+
+free(result);
 ```
 
-are semantically equivalent C types but are not currently treated as identical by the callback validator.
+For list functions, the test should preserve the appropriate node/content pointers when necessary so cleanup does not depend on the function under test behaving correctly.
 
 ______________________________________________________________________
 
-# API Summary
+# Debugging Failed Tests
 
-## Context
+When a test unexpectedly fails, the most useful things to check are:
 
-```python
-c.function(...)
-c.buffer(...)
-c.pointer(...)
-c.callback(...)
-c.program(...)
-c.malloc.fail_at(...)
-c.malloc.reset()
+1. The generated C code.
+1. The actual captured output.
+1. The expected value.
+1. The actual value.
+1. AddressSanitizer output.
+1. Malloc count and allocation sizes.
+1. Whether the test itself correctly owns and frees its allocations.
+
+For list functions in particular, tests should avoid traversing a potentially corrupted list during cleanup. Save node pointers before calling the function when testing whether links or nodes were modified.
+
+For example:
+
+```c
+t_list *nodes[3];
+
+nodes[0] = lst;
+nodes[1] = lst->next;
+nodes[2] = lst->next->next;
+
+/* call function under test */
+
+/* cleanup using nodes[] */
 ```
 
-## Function
-
-```python
-function(...)
-```
-
-A `CFunction` is callable and produces a `CCallResult`.
-
-## Call Result
-
-```python
-result.run()
-
-result.equals(...)
-result.not_equal(...)
-result.equals_string(...)
-result.parsed_value
-
-result.is_null(...)
-result.is_not_null(...)
-
-result.buffer_equals(...)
-result.variable_equals(...)
-
-result.returned_buffer_equals(...)
-result.returned_pointer_is(...)
-
-result.capture_return(...)
-result.assert_return(...)
-
-result.malloc_count_equals(...)
-result.malloc_size_equals(...)
-
-result.assert_now()
-result.assert_reference()
-```
-
-## Capture
-
-```python
-Capture.buffer(size)
-Capture.pointer_raw()
-Capture.pointer_array(size)
-capture.child(...)
-```
-
-## Assertions
-
-```python
-Assert.buffer_equals(...)
-Assert.pointer_equals(...)
-Assert.is_null_pointer(...)
-Assert.is_not_null_pointer(...)
-Assert.pointer_array(...)
-assertion.child(...)
-```
-
-The main conceptual addition is the explicit distinction:
-
-```text
-CBuffer   -> test-owned array
-CPointer  -> test-owned variable
-Capture   -> function-owned returned memory
-```
+This allows the test to detect list corruption without relying on the corrupted structure for cleanup.
