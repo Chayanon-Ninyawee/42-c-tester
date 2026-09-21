@@ -4,29 +4,32 @@ suite = TestSuite("ft_isprint")
 
 
 def compare(c, argument, expected):
-    ft = c.ft_isprint(argument)
-    libc = c.isprint(argument)
+    test = c.include("libft.h", "ctype.h").code(f"""
+        int ft = ft_isprint({argument});
+        int libc = !!isprint({argument});
 
-    ft.run()
-    libc.run()
+        TEST_VALUE("ft", "%d", ft);
+        TEST_VALUE("libc", "%d", libc);
 
-    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
-    libc_value = int(bool(libc.parsed_value))
+        return 0;
+    """)
 
-    libc.value_equals(
-        libc_value,
-        expected,
-        "Test with isprint() from libc",
-    ).assert_reference()
-
-    ft.equals(
-        expected,
-        "Test with value",
+    test.value("ft").equals(
+        str(expected),
+        "Test ft_isprint() returned value",
     )
-    ft.malloc_count_equals(
+
+    test.value("libc").equals(
+        str(expected),
+        "Reference value from isprint()",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("32 is printable")

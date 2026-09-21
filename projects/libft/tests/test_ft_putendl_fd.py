@@ -1,191 +1,239 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_putendl_fd")
 
 
 def compare(c, original, fd, expected):
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
-    )
+    original_c = c_bytes(original)
 
-    ft = c.ft_putendl_fd(
-        ft_s,
-        fd,
-    )
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-    ft.run()
+        ft_putendl_fd(
+            (char *)ft_s,
+            {fd}
+        );
+
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
+
+        return 0;
+        """
+    )
 
     if fd == 1:
-        ft.stdout_equals(
+        test.stdout().equals(
             expected,
             "String was not written to stdout",
         )
-        ft.stderr_equals(
+
+        test.stderr().equals(
             b"",
             "Unexpected output on stderr",
         )
     elif fd == 2:
-        ft.stdout_equals(
+        test.stdout().equals(
             b"",
             "Unexpected output on stdout",
         )
-        ft.stderr_equals(
+
+        test.stderr().equals(
             expected,
             "String was not written to stderr",
         )
     else:
-        ft.fd_equals(
-            fd,
+        test.fd(fd).equals(
             expected,
             "String was not written to the specified fd",
         )
 
-    ft.buffer_equals(
-        ft_s,
+    test.buffer("ft_s").equals(
         original,
         "Input string was modified",
     )
-    ft.assert_now()
+
+    test.malloc.count(
+        0,
+        "Test malloc count",
+    )
+
+    test.assert_now()
 
 
 @suite.case("stdout")
 def test_stdout(c):
-    original = b"hello world\x00"
-    expected = b"hello world\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello world\x00",
+        1,
+        b"hello world\n",
+    )
 
 
 @suite.case("stderr")
 def test_stderr(c):
-    original = b"hello world\x00"
-    expected = b"hello world\n"
-
-    compare(c, original, 2, expected)
+    compare(
+        c,
+        b"hello world\x00",
+        2,
+        b"hello world\n",
+    )
 
 
 @suite.case("custom file descriptor")
 def test_custom_fd(c):
-    fd = c.fd()
-    original = b"hello world\x00"
-    expected = b"hello world\n"
-
-    compare(c, original, fd, expected)
+    compare(
+        c,
+        b"hello world\x00",
+        3,
+        b"hello world\n",
+    )
 
 
 @suite.case("empty string")
 def test_empty(c):
-    original = b"\x00"
-    expected = b"\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"\x00",
+        1,
+        b"\n",
+    )
 
 
 @suite.case("single character")
 def test_single_character(c):
-    original = b"a\x00"
-    expected = b"a\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"a\x00",
+        1,
+        b"a\n",
+    )
 
 
 @suite.case("spaces")
 def test_spaces(c):
-    original = b"hello world\x00"
-    expected = b"hello world\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello world\x00",
+        1,
+        b"hello world\n",
+    )
 
 
 @suite.case("multiple spaces")
 def test_multiple_spaces(c):
-    original = b"hello  world   test\x00"
-    expected = b"hello  world   test\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello  world   test\x00",
+        1,
+        b"hello  world   test\n",
+    )
 
 
 @suite.case("digits")
 def test_digits(c):
-    original = b"1234567890\x00"
-    expected = b"1234567890\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"1234567890\x00",
+        1,
+        b"1234567890\n",
+    )
 
 
 @suite.case("uppercase and lowercase")
 def test_mixed_case(c):
-    original = b"AbCdEfGh\x00"
-    expected = b"AbCdEfGh\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"AbCdEfGh\x00",
+        1,
+        b"AbCdEfGh\n",
+    )
 
 
 @suite.case("punctuation")
 def test_punctuation(c):
-    original = b"!@#$%^&*()[]{};:'\",.<>/?\x00"
-    expected = b"!@#$%^&*()[]{};:'\",.<>/?\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"!@#$%^&*()[]{};:'\",.<>/?\x00",
+        1,
+        b"!@#$%^&*()[]{};:'\",.<>/?\n",
+    )
 
 
 @suite.case("newline in string")
 def test_newline(c):
-    original = b"hello\nworld\x00"
-    expected = b"hello\nworld\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello\nworld\x00",
+        1,
+        b"hello\nworld\n",
+    )
 
 
 @suite.case("tab in string")
 def test_tab(c):
-    original = b"hello\tworld\x00"
-    expected = b"hello\tworld\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello\tworld\x00",
+        1,
+        b"hello\tworld\n",
+    )
 
 
 @suite.case("carriage return")
 def test_carriage_return(c):
-    original = b"hello\rworld\x00"
-    expected = b"hello\rworld\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello\rworld\x00",
+        1,
+        b"hello\rworld\n",
+    )
 
 
 @suite.case("all whitespace")
 def test_whitespace(c):
-    original = b" \t\n\r\x00"
-    expected = b" \t\n\r\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b" \t\n\r\x00",
+        1,
+        b" \t\n\r\n",
+    )
 
 
 @suite.case("binary bytes")
 def test_binary(c):
-    original = b"\x01\x02\x03\x04\x05\x00"
-    expected = b"\x01\x02\x03\x04\x05\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"\x01\x02\x03\x04\x05\x00",
+        1,
+        b"\x01\x02\x03\x04\x05\n",
+    )
 
 
 @suite.case("high bytes")
 def test_high_bytes(c):
-    original = b"\x80\x81\xfe\xff\x00"
-    expected = b"\x80\x81\xfe\xff\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"\x80\x81\xfe\xff\x00",
+        1,
+        b"\x80\x81\xfe\xff\n",
+    )
 
 
 @suite.case("string with embedded null")
 def test_embedded_null(c):
-    original = b"hello\x00world\x00"
-    expected = b"hello\n"
-
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        b"hello\x00world\x00",
+        1,
+        b"hello\n",
+    )
 
 
 @suite.case("long string")
@@ -193,22 +241,29 @@ def test_long_string(c):
     original = b"hello world " * 1000 + b"\x00"
     expected = b"hello world " * 1000 + b"\n"
 
-    compare(c, original, 1, expected)
+    compare(
+        c,
+        original,
+        1,
+        expected,
+    )
 
 
 @suite.case("custom fd with empty string")
 def test_custom_fd_empty(c):
-    fd = c.fd()
-    original = b"\x00"
-    expected = b"\n"
-
-    compare(c, original, fd, expected)
+    compare(
+        c,
+        b"\x00",
+        3,
+        b"\n",
+    )
 
 
 @suite.case("custom fd with special characters")
 def test_custom_fd_special(c):
-    fd = c.fd()
-    original = b"!@#$%^&*()\n\t\x00"
-    expected = b"!@#$%^&*()\n\t\n"
-
-    compare(c, original, fd, expected)
+    compare(
+        c,
+        b"!@#$%^&*()\n\t\x00",
+        3,
+        b"!@#$%^&*()\n\t\n",
+    )

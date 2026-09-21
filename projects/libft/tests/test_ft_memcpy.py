@@ -1,139 +1,174 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_memcpy")
 
 
 def compare(c, dest_original, src_original, expected, count):
-    ft_dest = c.buffer(
-        dest_original,
-        size=len(dest_original),
-        name="ft_dest",
-    )
-    ft_src = c.buffer(
-        src_original,
-        size=len(src_original),
-        name="ft_src",
-    )
+    dest_c = c_bytes(dest_original)
+    src_c = c_bytes(src_original)
 
-    libc_dest = c.buffer(
-        dest_original,
-        size=len(dest_original),
-        name="libc_dest",
-    )
-    libc_src = c.buffer(
-        src_original,
-        size=len(src_original),
-        name="libc_src",
-    )
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_dest[] = {{{dest_c}}};
+        unsigned char ft_src[] = {{{src_c}}};
 
-    ft = c.ft_memcpy(
-        ft_dest,
-        ft_src,
-        count,
-    )
+        unsigned char libc_dest[] = {{{dest_c}}};
+        unsigned char libc_src[] = {{{src_c}}};
 
-    libc = c.memcpy(
-        libc_dest,
-        libc_src,
-        count,
-    )
+        void *ft_result = ft_memcpy(
+            ft_dest,
+            ft_src,
+            {count}
+        );
 
-    ft.run()
-    libc.run()
+        void *libc_result = memcpy(
+            libc_dest,
+            libc_src,
+            {count}
+        );
 
-    libc.returned_pointer_is(
-        libc_dest,
-        "Test returned pointer from memcpy() from libc",
-    )
-    libc.buffer_equals(
-        libc_dest,
-        expected,
-        "Test destination buffer from memcpy() from libc",
-    )
-    libc.buffer_equals(
-        libc_src,
-        src_original,
-        "Test that source buffer was not modified by memcpy() from libc",
-    ).assert_reference()
+        int ft_pointer_ok = (ft_result == ft_dest);
+        int libc_pointer_ok = (libc_result == libc_dest);
 
-    ft.returned_pointer_is(
-        ft_dest,
+        TEST_VALUE("ft_pointer", "%d", ft_pointer_ok);
+        TEST_VALUE("libc_pointer", "%d", libc_pointer_ok);
+
+        TEST_BUFFER(
+            "ft_dest",
+            ft_dest,
+            sizeof(ft_dest)
+        );
+
+        TEST_BUFFER(
+            "ft_src",
+            ft_src,
+            sizeof(ft_src)
+        );
+
+        TEST_BUFFER(
+            "libc_dest",
+            libc_dest,
+            sizeof(libc_dest)
+        );
+
+        TEST_BUFFER(
+            "libc_src",
+            libc_src,
+            sizeof(libc_src)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft_pointer").equals(
+        "1",
         "Test returned pointer",
     )
-    ft.buffer_equals(
-        ft_dest,
+
+    test.value("libc_pointer").equals(
+        "1",
+        "Test returned pointer from memcpy() from libc",
+    ).reference()
+
+    test.buffer("ft_dest").equals(
         expected,
         "Test destination buffer",
     )
-    ft.buffer_equals(
-        ft_src,
+
+    test.buffer("libc_dest").equals(
+        expected,
+        "Test destination buffer from memcpy() from libc",
+    ).reference()
+
+    test.buffer("ft_src").equals(
         src_original,
-        "Test that source buffer was not modified",
+        "Test that source buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_src").equals(
+        src_original,
+        "Test that source buffer was modified by memcpy() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("copies entire buffer")
 def test_all_bytes(c):
-    dest_original = b"XXXXXXXXXX"
-    src_original = b"hello12345"
-    expected = b"hello12345"
-
-    compare(c, dest_original, src_original, expected, "10")
+    compare(
+        c,
+        b"XXXXXXXXXX",
+        b"hello12345",
+        b"hello12345",
+        "10",
+    )
 
 
 @suite.case("copies first 5 bytes")
 def test_partial(c):
-    dest_original = b"XXXXXXXXXX"
-    src_original = b"hello12345"
-    expected = b"helloXXXXX"
-
-    compare(c, dest_original, src_original, expected, "5")
+    compare(
+        c,
+        b"XXXXXXXXXX",
+        b"hello12345",
+        b"helloXXXXX",
+        "5",
+    )
 
 
 @suite.case("copies one byte")
 def test_one_byte(c):
-    dest_original = b"XXXXXXXXXX"
-    src_original = b"hello12345"
-    expected = b"hXXXXXXXXX"
-
-    compare(c, dest_original, src_original, expected, "1")
+    compare(
+        c,
+        b"XXXXXXXXXX",
+        b"hello12345",
+        b"hXXXXXXXXX",
+        "1",
+    )
 
 
 @suite.case("zero bytes does nothing")
 def test_zero(c):
-    dest_original = b"XXXXXXXXXX"
-    src_original = b"hello12345"
-    expected = b"XXXXXXXXXX"
-
-    compare(c, dest_original, src_original, expected, "0")
+    compare(
+        c,
+        b"XXXXXXXXXX",
+        b"hello12345",
+        b"XXXXXXXXXX",
+        "0",
+    )
 
 
 @suite.case("works with binary data")
 def test_binary(c):
-    dest_original = b"\x00\x00\x00\x00\x00"
-    src_original = b"\xff\x01\x80\x00\x7f"
-    expected = b"\xff\x01\x80\x00\x7f"
-
-    compare(c, dest_original, src_original, expected, "5")
+    compare(
+        c,
+        b"\x00\x00\x00\x00\x00",
+        b"\xff\x01\x80\x00\x7f",
+        b"\xff\x01\x80\x00\x7f",
+        "5",
+    )
 
 
 @suite.case("preserves bytes after n")
 def test_boundary(c):
-    dest_original = b"0123456789"
-    src_original = b"abcdefghij"
-    expected = b"abcd456789"
-
-    compare(c, dest_original, src_original, expected, "4")
+    compare(
+        c,
+        b"0123456789",
+        b"abcdefghij",
+        b"abcd456789",
+        "4",
+    )
 
 
 @suite.case("copies between independent buffers")
 def test_different_buffers(c):
-    dest_original = b"abcdefghij"
-    src_original = b"1234567890"
-    expected = b"1234567hij"
-
-    compare(c, dest_original, src_original, expected, "7")
+    compare(
+        c,
+        b"abcdefghij",
+        b"1234567890",
+        b"1234567hij",
+        "7",
+    )

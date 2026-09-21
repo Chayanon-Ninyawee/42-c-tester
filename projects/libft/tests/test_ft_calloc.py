@@ -1,4 +1,4 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite
 
 suite = TestSuite("ft_calloc")
 
@@ -6,107 +6,132 @@ suite = TestSuite("ft_calloc")
 def compare(c, count, size, expected):
     count_i = int(count, 0)
     size_i = int(size, 0)
+    total = count_i * size_i
 
-    ft = c.ft_calloc(
-        count,
-        size,
-    )
+    test = c.include("libft.h").code(f"""
+        void *ft = ft_calloc(
+            {count},
+            {size}
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        if (ft != NULL)
+            TEST_BUFFER(
+                "ft_buffer",
+                ft,
+                {total}
+            );
+
+        if (ft)
+            free(ft);
+
+        return 0;
+    """)
 
     if expected is None:
-        ft.capture_return(Capture.pointer_raw())
-    else:
-        ft.capture_return(
-            Capture.buffer(count_i * size_i),
-        )
-
-    ft.run()
-
-    if expected is None:
-        ft.is_null(
+        test.value("ft_is_null").equals(
+            "1",
             "Test return value",
         )
     else:
-        ft.is_not_null(
+        test.value("ft_is_null").equals(
+            "0",
             "Test return value",
         )
 
-        ft.malloc_count_equals(
-            1,
-            "Test malloc count",
-        )
-        ft.malloc_size_equals(
-            0,
-            count_i * size_i,
-            "Test malloc size",
-        )
-
-        ft.assert_return(
-            Assert.buffer_equals(
-                b"\0" * (count_i * size_i),
-            ),
+        test.buffer("ft_buffer").equals(
+            b"\0" * total,
             "Test calloc memory",
         )
 
-    ft.assert_now()
+        test.malloc.count(
+            1,
+            "Test malloc count",
+        )
+
+        test.malloc.size(
+            0,
+            total,
+            "Test malloc size",
+        )
+
+    test.assert_now()
 
 
 def test_malloc_failures(c, count, size):
     count_i = int(count, 0)
-    size_i = int(size, 0)
+    size_i = count_i * int(size, 0)
 
-    c.malloc.reset()
+    test = c.include("libft.h").code(f"""
+        void *ft = ft_calloc(
+            {count},
+            {size}
+        );
 
-    ft = c.ft_calloc(
-        count,
-        size,
-    )
+        int ft_is_null = (ft == NULL);
 
-    ft.capture_return(
-        Capture.buffer(count_i * size_i),
-    )
-    ft.run()
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-    ft.is_not_null(
+        if (ft != NULL)
+            TEST_BUFFER(
+                "ft_buffer",
+                ft,
+                {size_i}
+            );
+
+        if (ft)
+            free(ft);
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
-        1,
-        "Test malloc count",
-    )
-    ft.malloc_size_equals(
-        0,
-        count_i * size_i,
-        "Test malloc size",
-    )
-    ft.assert_return(
-        Assert.buffer_equals(
-            b"\0" * (count_i * size_i),
-        ),
+
+    test.buffer("ft_buffer").equals(
+        b"\0" * size_i,
         "Test calloc memory",
     )
 
-    ft.assert_now()
+    test.malloc.count(
+        1,
+        "Test malloc count",
+    )
 
-    malloc_count = ft.malloc_count
+    test.malloc.size(
+        0,
+        size_i,
+        "Test malloc size",
+    )
 
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test.assert_now()
 
-        ft = c.ft_calloc(
-            count,
-            size,
-        )
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        void *ft = ft_calloc(
+            {count},
+            {size}
+        );
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        int ft_is_null = (ft == NULL);
 
-        ft.is_null(
-            f"malloc failure at call {fail_at}",
-        )
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-        ft.assert_now()
+        return 0;
+    """)
 
-    c.malloc.reset()
+    test.malloc.fail_at(0)
+
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
+    )
+
+    test.assert_now()
 
 
 @suite.case("allocates zeroed memory")

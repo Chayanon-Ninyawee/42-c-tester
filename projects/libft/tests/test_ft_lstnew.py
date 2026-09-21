@@ -1,4 +1,4 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite
 
 suite = TestSuite("ft_lstnew")
 
@@ -6,109 +6,107 @@ T_LIST_SIZE = 16
 
 
 def compare(c, value):
-    content = c.variable(
-        "int",
-        value,
-        name="content",
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        int content = {value};
+
+        t_list *ft = ft_lstnew(&content);
+
+        int ft_is_null = (ft == NULL);
+        int ft_content_ok = (
+            ft != NULL &&
+            ft->content == &content
+        );
+        int ft_next_is_null = (
+            ft != NULL &&
+            ft->next == NULL
+        );
+
+        TEST_VALUE(
+            "ft_is_null",
+            "%d",
+            ft_is_null
+        );
+
+        TEST_VALUE(
+            "ft_content_ok",
+            "%d",
+            ft_content_ok
+        );
+
+        TEST_VALUE(
+            "ft_next_is_null",
+            "%d",
+            ft_next_is_null
+        );
+
+        if (ft != NULL)
+            free(ft);
+
+        return 0;
+        """
     )
 
-    result = c.ft_lstnew(
-        content.pointer(),
+    test.value("ft_is_null").equals(
+        "0",
+        "Test return value",
     )
 
-    result.capture_return(
-        Capture.struct(
-            {
-                "content": Capture.pointer_raw(),
-                "next": Capture.pointer_raw(),
-            }
-        )
+    test.value("ft_content_ok").equals(
+        "1",
+        "Test content pointer",
     )
 
-    result.run()
+    test.value("ft_next_is_null").equals(
+        "1",
+        "Test next pointer",
+    )
 
-    result.malloc_count_equals(
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    result.malloc_size_equals(
+
+    test.malloc.size(
         0,
         T_LIST_SIZE,
         "Test malloc size",
     )
 
-    result.assert_return(
-        Assert.struct(
-            {
-                "content": Assert.pointer_equals(content),
-                "next": Assert.is_null_pointer(),
-            }
-        )
-    ).assert_now()
+    test.assert_now()
 
 
 def test_malloc_failure(c, value):
-    content = c.variable(
-        "int",
-        value,
-        name="content",
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        int content = {value};
+
+        t_list *ft = ft_lstnew(&content);
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE(
+            "ft_is_null",
+            "%d",
+            ft_is_null
+        );
+
+        return 0;
+        """
     )
 
-    # First run must succeed so we know the normal allocation count.
-    result = c.ft_lstnew(
-        content.pointer(),
+    test.malloc.fail_at(0)
+
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
     )
 
-    result.capture_return(
-        Capture.struct(
-            {
-                "content": Capture.pointer_raw(),
-                "next": Capture.pointer_raw(),
-            }
-        )
-    )
-
-    result.run()
-
-    result.malloc_count_equals(
-        1,
-        "Test malloc count",
-    )
-    result.malloc_size_equals(
-        0,
-        T_LIST_SIZE,
-        "Test malloc size",
-    )
-
-    result.assert_return(
-        Assert.struct(
-            {
-                "content": Assert.pointer_equals(content),
-                "next": Assert.is_null_pointer(),
-            }
-        ),
-        "Initial allocation test",
-    )
-    result.assert_now()
-
-    malloc_count = result.malloc_count
-
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
-
-        result = c.ft_lstnew(
-            content.pointer(),
-        )
-
-        result.run()
-
-        result.is_null(
-            f"malloc failure at call {fail_at}",
-        )
-
-        result.assert_now()
-
-    c.malloc.reset()
+    test.assert_now()
 
 
 @suite.case("basic")
@@ -131,6 +129,11 @@ def test_large(c):
     compare(c, 2147483647)
 
 
-@suite.case("malloc failure")
-def test_malloc_failure_case(c):
+@suite.case("malloc failure 1")
+def test_malloc_failure_case_1(c):
     test_malloc_failure(c, 42)
+
+
+@suite.case("malloc failure 2")
+def test_malloc_failure_case_2(c):
+    test_malloc_failure(c, 67)

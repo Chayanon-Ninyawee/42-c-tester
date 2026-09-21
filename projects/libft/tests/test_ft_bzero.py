@@ -1,94 +1,86 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_bzero")
 
 
 def compare(c, original, expected, count):
-    ft_buffer = c.buffer(
-        original,
-        size=len(original),
-        name="ft",
-    )
+    original_c = c_bytes(original)
 
-    libc_buffer = c.buffer(
-        original,
-        size=len(original),
-        name="libc",
-    )
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_buffer[] = {{{original_c}}};
+        unsigned char libc_buffer[] = {{{original_c}}};
 
-    ft = c.ft_bzero(
-        ft_buffer,
-        count,
-    )
+        ft_bzero(ft_buffer, {count});
+        bzero(libc_buffer, {count});
 
-    libc = c.bzero(
-        libc_buffer,
-        count,
-    )
+        TEST_BUFFER(
+            "ft_buffer",
+            ft_buffer,
+            sizeof(ft_buffer)
+        );
 
-    ft.run()
-    libc.run()
+        TEST_BUFFER(
+            "libc_buffer",
+            libc_buffer,
+            sizeof(libc_buffer)
+        );
 
-    libc.buffer_equals(
-        libc_buffer,
-        expected,
-        "Test buffer contents from memset() from libc",
-    ).assert_reference()
+        return 0;
+    """)
 
-    ft.buffer_equals(
-        ft_buffer,
+    test.buffer("ft_buffer").equals(
         expected,
         "Test buffer contents",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_buffer").equals(
+        expected,
+        "Test buffer contents from bzero() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("zeros entire buffer")
 def test_all_bytes(c):
-    original = b"hello"
-    expected = b"\x00\x00\x00\x00\x00"
-
-    compare(c, original, expected, "5")
+    compare(c, b"hello", b"\x00\x00\x00\x00\x00", "5")
 
 
 @suite.case("zeros first 3 bytes")
 def test_partial(c):
-    original = b"hello"
-    expected = b"\x00\x00\x00lo"
-
-    compare(c, original, expected, "3")
+    compare(c, b"hello", b"\x00\x00\x00lo", "3")
 
 
 @suite.case("zeros first byte")
 def test_one_byte(c):
-    original = b"hello"
-    expected = b"\x00ello"
-
-    compare(c, original, expected, "1")
+    compare(c, b"hello", b"\x00ello", "1")
 
 
 @suite.case("zero bytes does nothing")
 def test_zero(c):
-    original = b"hello"
-    expected = b"hello"
-
-    compare(c, original, expected, "0")
+    compare(c, b"hello", b"hello", "0")
 
 
 @suite.case("works with binary data")
 def test_binary(c):
-    original = b"\xff\x01\x00\x80\x7f"
-    expected = b"\x00\x00\x00\x80\x7f"
-
-    compare(c, original, expected, "3")
+    compare(
+        c,
+        b"\xff\x01\x00\x80\x7f",
+        b"\x00\x00\x00\x80\x7f",
+        "3",
+    )
 
 
 @suite.case("preserves bytes after n")
 def test_boundary(c):
-    original = b"abcdefghij"
-    expected = b"\x00\x00\x00\x00efghij"
-
-    compare(c, original, expected, "4")
+    compare(
+        c,
+        b"abcdefghij",
+        b"\x00\x00\x00\x00efghij",
+        "4",
+    )

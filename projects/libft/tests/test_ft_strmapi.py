@@ -1,585 +1,535 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strmapi")
 
 
-def compare(c, original, expected, callback):
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
+def compare(c, original, expected, callback_name, callback_body):
+    original_c = c_bytes(original)
+
+    test = (
+        c.include(
+            "libft.h",
+            "stdlib.h",
+        )
+        .function(f"""
+        static char {callback_name}(unsigned int i, char c)
+        {{
+            {callback_body}
+        }}
+        """)
+        .code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
+
+        char *ft = ft_strmapi(
+            (char *)ft_s,
+            {callback_name}
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
+
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+        """)
     )
 
-    ft = c.ft_strmapi(
-        ft_s,
-        callback,
-    )
-
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
-
-    ft.is_not_null(
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.buffer_equals(
-        ft_s,
+
+    test.buffer("ft_s").equals(
         original,
         "Source string was modified",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
-def test_malloc_failures(c, original, expected, callback):
-    c.malloc.reset()
+def test_malloc_failures(
+    c,
+    original,
+    expected,
+    callback_name,
+    callback_body,
+):
+    original_c = c_bytes(original)
 
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
+    test = (
+        c.include(
+            "libft.h",
+            "stdlib.h",
+        )
+        .function(f"""
+        static char {callback_name}(unsigned int i, char c)
+        {{
+            {callback_body}
+        }}
+        """)
+        .code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
+
+        char *ft = ft_strmapi(
+            (char *)ft_s,
+            {callback_name}
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
+
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+        """)
     )
 
-    ft = c.ft_strmapi(
-        ft_s,
-        callback,
-    )
-
-    # Successful run to determine allocation count.
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
-
-    ft.is_not_null(
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.buffer_equals(
-        ft_s,
+
+    test.buffer("ft_s").equals(
         original,
         "Source string was modified",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
 
-    malloc_count = ft.malloc_count
+    test.assert_now()
 
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test = (
+        c.include(
+            "libft.h",
+        )
+        .function(f"""
+        static char {callback_name}(unsigned int i, char c)
+        {{
+            {callback_body}
+        }}
+        """)
+        .code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-        ft = c.ft_strmapi(
+        char *ft = ft_strmapi(
+            (char *)ft_s,
+            {callback_name}
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
             ft_s,
-            callback,
-        )
+            sizeof(ft_s)
+        );
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        return 0;
+        """)
+    )
 
-        ft.is_null(
-            f"malloc failure at call {fail_at}",
-        )
-        ft.buffer_equals(
-            ft_s,
-            original,
-            "Source string was modified",
-        )
-        ft.assert_now()
+    test.malloc.fail_at(0)
 
-    c.malloc.reset()
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
+    )
+
+    test.buffer("ft_s").equals(
+        original,
+        "Source string was modified",
+    )
+
+    test.assert_now()
 
 
 @suite.case("identity")
 def test_identity(c):
-    identity = c.callback(
-        name="identity",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"hello world\0",
         b"hello world\0",
-        identity,
+        "identity",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("empty string")
 def test_empty(c):
-    identity = c.callback(
-        name="identity",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"\0",
         b"\0",
-        identity,
+        "identity",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("index is passed correctly")
 def test_index(c):
-    char_index = c.callback(
-        name="char_index",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)c; return '0' + i;",
-    )
-
     compare(
         c,
         b"abcdef\0",
         b"012345\0",
-        char_index,
+        "char_index",
+        """
+        (void)c;
+        return '0' + i;
+        """,
     )
 
 
 @suite.case("character is passed correctly")
 def test_character(c):
-    identity = c.callback(
-        name="character",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"ABCxyz123\0",
         b"ABCxyz123\0",
-        identity,
+        "character",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("index and character")
 def test_index_and_character(c):
-    increment = c.callback(
-        name="increment",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="return c + i;",
-    )
-
     compare(
         c,
         b"abcde\0",
         b"acegi\0",
-        increment,
+        "increment",
+        """
+        return c + i;
+        """,
     )
 
 
 @suite.case("decrement")
 def test_decrement(c):
-    decrement = c.callback(
-        name="decrement",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="return c - i;",
-    )
-
     compare(
         c,
         b"edcba\0",
         b"eca_]\0",
-        decrement,
+        "decrement",
+        """
+        return c - i;
+        """,
     )
 
 
 @suite.case("same callback result")
 def test_same_result(c):
-    star = c.callback(
-        name="star",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; (void)c; return '*';",
-    )
-
     compare(
         c,
         b"hello world\0",
         b"***********\0",
-        star,
+        "star",
+        """
+        (void)i;
+        (void)c;
+        return '*';
+        """,
     )
 
 
 @suite.case("index based transformation")
 def test_index_transformation(c):
-    transform = c.callback(
-        name="index_transform",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            if (i % 2 == 0)
-                return c + 1;
-            return c - 1;
-        """,
-    )
-
     compare(
         c,
         b"abcdefhh\0",
         b"badcfeig\0",
-        transform,
+        "index_transform",
+        """
+        if (i % 2 == 0)
+            return c + 1;
+
+        return c - 1;
+        """,
     )
 
 
 @suite.case("character based transformation")
 def test_character_transformation(c):
-    transform = c.callback(
-        name="character_transform",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            (void)i;
-            if (c >= 'a' && c <= 'z')
-                return c - 'a' + 'A';
-            if (c >= 'A' && c <= 'Z')
-                return c - 'A' + 'a';
-            return c;
-        """,
-    )
-
     compare(
         c,
         b"Hello WORLD 123!\0",
         b"hELLO world 123!\0",
-        transform,
+        "character_transform",
+        """
+        (void)i;
+
+        if (c >= 'a' && c <= 'z')
+            return c - 'a' + 'A';
+
+        if (c >= 'A' && c <= 'Z')
+            return c - 'A' + 'a';
+
+        return c;
+        """,
     )
 
 
 @suite.case("index and character dependent transformation")
 def test_index_character_transformation(c):
-    transform = c.callback(
-        name="complex_transform",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            if (c >= 'a' && c <= 'z')
-                c -= 'a';
-
-            return (c + i * 3) % 26 + 'A';
-        """,
-    )
-
     compare(
         c,
         b"abcdef\0",
         b"AEIMQU\0",
-        transform,
+        "complex_transform",
+        """
+        if (c >= 'a' && c <= 'z')
+            c -= 'a';
+
+        return (c + i * 3) % 26 + 'A';
+        """,
     )
 
 
 @suite.case("conditional index transformation")
 def test_conditional_index(c):
-    transform = c.callback(
-        name="conditional_index",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            if (i < 3)
-                return c + 10;
-
-            if (i % 2 == 0)
-                return c - 2;
-
-            return c + 2;
-        """,
-    )
-
     compare(
         c,
         b"abcdef\0",
         b"klmfch\0",
-        transform,
+        "conditional_index",
+        """
+        if (i < 3)
+            return c + 10;
+
+        if (i % 2 == 0)
+            return c - 2;
+
+        return c + 2;
+        """,
     )
 
 
 @suite.case("multiple operations")
 def test_multiple_operations(c):
-    transform = c.callback(
-        name="multiple_operations",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            int value;
-
-            value = c;
-            value += i;
-            value *= 2;
-            value -= 3;
-
-            return value;
-        """,
-    )
-
     compare(
         c,
         b"abcdef\0",
         b"\xbf\xc3\xc7\xcb\xcf\xd3\0",
-        transform,
+        "multiple_operations",
+        """
+        int value;
+
+        value = c;
+        value += i;
+        value *= 2;
+        value -= 3;
+
+        return value;
+        """,
     )
 
 
 @suite.case("character classification")
 def test_character_classification(c):
-    classify = c.callback(
-        name="classify",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="""
-            (void)i;
-            if (c >= '0' && c <= '9')
-                return 'D';
-
-            if (c >= 'a' && c <= 'z')
-                return 'L';
-
-            if (c >= 'A' && c <= 'Z')
-                return 'U';
-
-            if (c == ' ')
-                return 'S';
-
-            return '?';
-        """,
-    )
-
     compare(
         c,
         b"aZ5 !b2C\0",
         b"LUDS?LDU\0",
-        classify,
+        "classify",
+        """
+        (void)i;
+
+        if (c >= '0' && c <= '9')
+            return 'D';
+
+        if (c >= 'a' && c <= 'z')
+            return 'L';
+
+        if (c >= 'A' && c <= 'Z')
+            return 'U';
+
+        if (c == ' ')
+            return 'S';
+
+        return '?';
+        """,
     )
 
 
 @suite.case("special characters")
 def test_special(c):
-    identity = c.callback(
-        name="special",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"!@#$%^&*()[]{};:'\",.<>/?\0",
         b"!@#$%^&*()[]{};:'\",.<>/?\0",
-        identity,
+        "special",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("spaces and whitespace")
 def test_whitespace(c):
-    identity = c.callback(
-        name="whitespace",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b" \t\n\rhello world\t\n\0",
         b" \t\n\rhello world\t\n\0",
-        identity,
+        "whitespace",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("binary data")
 def test_binary(c):
-    identity = c.callback(
-        name="binary",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"\x01\x02\x03hello\x04\x05\x06\0",
         b"\x01\x02\x03hello\x04\x05\x06\0",
-        identity,
+        "binary",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("high bytes")
 def test_high_bytes(c):
-    identity = c.callback(
-        name="high_bytes",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     compare(
         c,
         b"\x80\x81\xfe\xffhello\0",
         b"\x80\x81\xfe\xffhello\0",
-        identity,
+        "high_bytes",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("large string")
 def test_large(c):
-    identity = c.callback(
-        name="large",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     original = b"0123456789" * 1000 + b"\0"
 
     compare(
         c,
         original,
         original,
-        identity,
+        "large",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("malloc failure")
 def test_malloc_failure(c):
-    identity = c.callback(
-        name="malloc_failure",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     test_malloc_failures(
         c,
         b"hello world\0",
         b"hello world\0",
-        identity,
+        "malloc_failure",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("malloc failure empty string")
 def test_malloc_failure_empty(c):
-    identity = c.callback(
-        name="malloc_failure_empty",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     test_malloc_failures(
         c,
         b"\0",
         b"\0",
-        identity,
+        "malloc_failure_empty",
+        """
+        (void)i;
+        return c;
+        """,
     )
 
 
 @suite.case("malloc failure binary data")
 def test_malloc_failure_binary(c):
-    identity = c.callback(
-        name="malloc_failure_binary",
-        returns="char",
-        args=[
-            ("unsigned int", "i"),
-            ("char", "c"),
-        ],
-        body="(void)i; return c;",
-    )
-
     test_malloc_failures(
         c,
         b"\x01\x02hello\xfe\xff\0",
         b"\x01\x02hello\xfe\xff\0",
-        identity,
+        "malloc_failure_binary",
+        """
+        (void)i;
+        return c;
+        """,
     )

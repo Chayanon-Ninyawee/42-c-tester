@@ -1,3 +1,3 @@
-from .c import Assert, Capture, CContext, CFileDescriptor, CFunction
-from .project import BuildConfig, FunctionConfig, FunctionDefinition, Project
+from .c import CContext, c_bytes
+from .project import BuildConfig, Project, TestConfig
 from .runner import TestSuite

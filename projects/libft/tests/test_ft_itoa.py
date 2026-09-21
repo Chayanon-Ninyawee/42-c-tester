@@ -1,86 +1,115 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite
 
 suite = TestSuite("ft_itoa")
 
 
 def compare(c, n, expected):
-    ft = c.ft_itoa(
-        str(n),
-    )
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        char *ft = ft_itoa({n});
 
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
+        int ft_is_null = (ft == NULL);
 
-    ft.is_not_null(
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 def test_malloc_failures(c, n, expected):
-    c.malloc.reset()
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        char *ft = ft_itoa({n});
 
-    # Successful run to determine allocation count.
-    ft = c.ft_itoa(
-        str(n),
-    )
+        int ft_is_null = (ft == NULL);
 
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-    ft.is_not_null(
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
 
-    malloc_count = ft.malloc_count
+    test.assert_now()
 
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test = c.include("libft.h").code(f"""
+        char *ft = ft_itoa({n});
 
-        ft = c.ft_itoa(
-            str(n),
-        )
+        int ft_is_null = (ft == NULL);
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-        ft.is_null(
-            f"malloc failure at call {fail_at}",
-        )
-        ft.assert_now()
+        return 0;
+    """)
 
-    c.malloc.reset()
+    test.malloc.fail_at(0)
+
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
+    )
+
+    test.assert_now()
 
 
 @suite.case("zero")

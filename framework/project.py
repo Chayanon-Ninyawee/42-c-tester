@@ -17,50 +17,16 @@ class BuildConfig:
 
 
 @dataclass
-class FunctionDefinition:
-    returns: str = "int"
-    args: list[str] = field(default_factory=list)
-    headers: list[str] = field(default_factory=list)
-    link: list[str] = field(default_factory=list)
-    err_flags: bool = True
-
-
-@dataclass
-class FunctionConfig:
-    """
-    Configuration used when compiling generated C function
-    test harnesses.
-
-    link:
-        Files to link against the generated harness.
-
-        Example:
-            ["libft.a"]
-
-    includes:
-        Include directories available to the harness.
-
-        Example:
-            ["."]
-
-    cflags:
-        Additional compiler flags.
-    """
-
-    functions: dict[str, FunctionDefinition] = field(default_factory=dict)
-
-    link: list[str] = field(default_factory=list)
+class TestConfig:
     includes: list[str] = field(default_factory=list)
     cflags: list[str] = field(default_factory=list)
+    link: list[str] = field(default_factory=list)
 
 
 @dataclass
 class Project:
     name: str
     build: BuildConfig
-
-    functions: FunctionConfig | None = None
-
+    test: TestConfig = field(default_factory=TestConfig)
     tests: list[str] = field(default_factory=list)
-
     directory: Path | None = None

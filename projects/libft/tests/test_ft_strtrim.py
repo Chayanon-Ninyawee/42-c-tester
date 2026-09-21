@@ -1,147 +1,205 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strtrim")
 
 
 def compare(c, original, trim_set, expected):
-    ft_s1 = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s1",
-    )
+    original_c = c_bytes(original)
+    trim_set_c = c_bytes(trim_set)
 
-    ft_set = c.buffer(
-        trim_set,
-        size=len(trim_set),
-        type="char",
-        name="ft_set",
-    )
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        unsigned char ft_s1[] = {{{original_c}}};
+        unsigned char ft_set[] = {{{trim_set_c}}};
 
-    ft = c.ft_strtrim(
-        ft_s1,
-        ft_set,
-    )
+        char *ft = ft_strtrim(
+            (char *)ft_s1,
+            (char *)ft_set
+        );
 
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
+        int ft_is_null = (ft == NULL);
 
-    ft.is_not_null(
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s1",
+            ft_s1,
+            sizeof(ft_s1)
+        );
+
+        TEST_BUFFER(
+            "ft_set",
+            ft_set,
+            sizeof(ft_set)
+        );
+
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.buffer_equals(
-        ft_s1,
+
+    test.buffer("ft_s1").equals(
         original,
         "Source string was modified",
     )
-    ft.buffer_equals(
-        ft_set,
+
+    test.buffer("ft_set").equals(
         trim_set,
         "Set string was modified",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 def test_malloc_failures(c, original, trim_set, expected):
-    c.malloc.reset()
+    original_c = c_bytes(original)
+    trim_set_c = c_bytes(trim_set)
 
-    ft_s1 = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s1",
-    )
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        unsigned char ft_s1[] = {{{original_c}}};
+        unsigned char ft_set[] = {{{trim_set_c}}};
 
-    ft_set = c.buffer(
-        trim_set,
-        size=len(trim_set),
-        type="char",
-        name="ft_set",
-    )
+        char *ft = ft_strtrim(
+            (char *)ft_s1,
+            (char *)ft_set
+        );
 
-    ft = c.ft_strtrim(
-        ft_s1,
-        ft_set,
-    )
+        int ft_is_null = (ft == NULL);
 
-    # Successful run to determine allocation count.
-    ft.capture_return(
-        Capture.buffer(len(expected)),
-    )
-    ft.run()
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-    ft.is_not_null(
+        TEST_BUFFER(
+            "ft_s1",
+            ft_s1,
+            sizeof(ft_s1)
+        );
+
+        TEST_BUFFER(
+            "ft_set",
+            ft_set,
+            sizeof(ft_set)
+        );
+
+        if (ft != NULL) {{
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {len(expected)}
+            );
+
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
+
+    test.malloc.count(
         1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         len(expected),
         "Test malloc size",
     )
-    ft.buffer_equals(
-        ft_s1,
+
+    test.buffer("ft_s1").equals(
         original,
         "Source string was modified",
     )
-    ft.buffer_equals(
-        ft_set,
+
+    test.buffer("ft_set").equals(
         trim_set,
         "Set string was modified",
     )
-    ft.assert_return(
-        Assert.buffer_equals(expected),
+
+    test.buffer("ft_result").equals(
+        expected,
         "Returned buffer mismatch",
     )
-    ft.assert_now()
 
-    malloc_count = ft.malloc_count
+    test.assert_now()
 
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test = c.include("libft.h").code(f"""
+        unsigned char ft_s1[] = {{{original_c}}};
+        unsigned char ft_set[] = {{{trim_set_c}}};
 
-        ft = c.ft_strtrim(
+        char *ft = ft_strtrim(
+            (char *)ft_s1,
+            (char *)ft_set
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s1",
             ft_s1,
+            sizeof(ft_s1)
+        );
+
+        TEST_BUFFER(
+            "ft_set",
             ft_set,
-        )
+            sizeof(ft_set)
+        );
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        return 0;
+    """)
 
-        ft.is_null(
-            f"malloc failure at call {fail_at}",
-        )
-        ft.buffer_equals(
-            ft_s1,
-            original,
-            "Source string was modified",
-        )
-        ft.buffer_equals(
-            ft_set,
-            trim_set,
-            "Set string was modified",
-        )
-        ft.assert_now()
+    test.malloc.fail_at(0)
 
-    c.malloc.reset()
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
+    )
+
+    test.buffer("ft_s1").equals(
+        original,
+        "Source string was modified",
+    )
+
+    test.buffer("ft_set").equals(
+        trim_set,
+        "Set string was modified",
+    )
+
+    test.assert_now()
 
 
 @suite.case("empty string")

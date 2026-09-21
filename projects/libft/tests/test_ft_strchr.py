@@ -4,172 +4,191 @@ suite = TestSuite("ft_strchr")
 
 
 def compare(c, original, argument, expected_offset):
-    ft_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft",
+    original_c = ", ".join(f"0x{byte:02x}" for byte in original)
+
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_buffer[] = {{{original_c}}};
+        unsigned char libc_buffer[] = {{{original_c}}};
+
+        char *ft = ft_strchr(
+            (char *)ft_buffer,
+            {argument}
+        );
+
+        char *libc = strchr(
+            (char *)libc_buffer,
+            {argument}
+        );
+
+        ptrdiff_t ft_offset = ft
+            ? ft - (char *)ft_buffer
+            : -1;
+
+        ptrdiff_t libc_offset = libc
+            ? libc - (char *)libc_buffer
+            : -1;
+
+        TEST_VALUE("ft", "%td", ft_offset);
+        TEST_VALUE("libc", "%td", libc_offset);
+
+        TEST_BUFFER(
+            "ft_buffer",
+            ft_buffer,
+            sizeof(ft_buffer)
+        );
+
+        TEST_BUFFER(
+            "libc_buffer",
+            libc_buffer,
+            sizeof(libc_buffer)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(expected_offset if expected_offset is not None else -1),
+        "Test ft_strchr() returned pointer",
     )
 
-    libc_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="libc",
-    )
+    test.value("libc").equals(
+        str(expected_offset if expected_offset is not None else -1),
+        "Reference returned pointer from strchr() from libc",
+    ).reference()
 
-    ft = c.ft_strchr(
-        ft_buffer,
-        argument,
-    )
-
-    libc = c.strchr(
-        libc_buffer,
-        argument,
-    )
-
-    ft.run()
-    libc.run()
-
-    if expected_offset is None:
-        libc.is_null(
-            "Test return value from strchr() from libc",
-        )
-
-        ft.is_null(
-            "Test return value",
-        )
-    else:
-        libc.returned_pointer_is(
-            libc_buffer.offset(expected_offset),
-            "Test returned pointer from strchr() from libc",
-        )
-
-        ft.returned_pointer_is(
-            ft_buffer.offset(expected_offset),
-            "Test returned pointer",
-        )
-
-    libc.buffer_equals(
-        libc_buffer,
-        original,
-        "Input buffer was modified by libc",
-    ).assert_reference()
-
-    ft.buffer_equals(
-        ft_buffer,
+    test.buffer("ft_buffer").equals(
         original,
         "Input buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_buffer").equals(
+        original,
+        "Input buffer was modified by strchr() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("finds first occurrence")
 def test_first_occurrence(c):
-    original = b"hello world\x00"
-    argument = str(ord("l"))
-    expected_offset = 2
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello world\x00",
+        ord("l"),
+        2,
+    )
 
 
 @suite.case("finds later occurrence")
 def test_later_occurrence(c):
-    original = b"hello world\x00"
-    argument = str(ord("w"))
-    expected_offset = 6
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello world\x00",
+        ord("w"),
+        6,
+    )
 
 
 @suite.case("finds last occurrence")
 def test_last_occurrence(c):
-    original = b"hello world\x00"
-    argument = str(ord("d"))
-    expected_offset = 10
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello world\x00",
+        ord("d"),
+        10,
+    )
 
 
 @suite.case("finds null terminator")
 def test_null_terminator(c):
-    original = b"hello\x00"
-    argument = "0"
-    expected_offset = 5
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello\x00",
+        0,
+        5,
+    )
 
 
 @suite.case("character not found")
 def test_not_found(c):
-    original = b"hello world\x00"
-    argument = str(ord("z"))
-    expected_offset = None
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello world\x00",
+        ord("z"),
+        None,
+    )
 
 
 @suite.case("empty string")
 def test_empty_string(c):
-    original = b"\x00"
-    argument = str(ord("a"))
-    expected_offset = None
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"\x00",
+        ord("a"),
+        None,
+    )
 
 
 @suite.case("empty string finds null")
 def test_empty_string_null(c):
-    original = b"\x00"
-    argument = "0"
-    expected_offset = 0
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"\x00",
+        0,
+        0,
+    )
 
 
 @suite.case("uppercase and lowercase are different")
 def test_case_sensitive(c):
-    original = b"Hello World\x00"
-    argument = str(ord("h"))
-    expected_offset = None
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"Hello World\x00",
+        ord("h"),
+        None,
+    )
 
 
 @suite.case("binary data 1")
 def test_binary_1(c):
-    original = b"\x01\x02\x03\x80\xff\x00"
-    argument = str(0x80)
-    expected_offset = 3
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"\x01\x02\x03\x80\xff\x00",
+        0x80,
+        3,
+    )
 
 
 @suite.case("binary data 2")
 def test_binary_2(c):
-    original = b"\x01\x02\x03\x80\xff\x00"
-    argument = str(0xFF)
-    expected_offset = 4
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"\x01\x02\x03\x80\xff\x00",
+        0xFF,
+        4,
+    )
 
 
 @suite.case("negative value")
 def test_negative(c):
-    original = b"hello\x00"
-    argument = "-1"
-    expected_offset = None
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello\x00",
+        -1,
+        None,
+    )
 
 
 @suite.case("character value 127")
 def test_127(c):
-    original = b"hello\x7fworld\x00"
-    argument = "127"
-    expected_offset = 5
-
-    compare(c, original, argument, expected_offset)
+    compare(
+        c,
+        b"hello\x7fworld\x00",
+        127,
+        5,
+    )

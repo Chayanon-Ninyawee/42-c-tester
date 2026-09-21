@@ -1,94 +1,105 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strnstr")
 
 
 def compare(c, big_original, little_original, len_value, expected_offset):
-    ft_buffer = c.buffer(
+    big_c = c_bytes(big_original)
+    little_c = c_bytes(little_original)
+
+    test = c.include("libft.h", "bsd/string.h").code(f"""
+        unsigned char ft_big[] = {{{big_c}}};
+        unsigned char ft_little[] = {{{little_c}}};
+
+        unsigned char libc_big[] = {{{big_c}}};
+        unsigned char libc_little[] = {{{little_c}}};
+
+        char *ft = ft_strnstr(
+            (char *)ft_big,
+            (char *)ft_little,
+            {len_value}
+        );
+
+        char *libc = strnstr(
+            (char *)libc_big,
+            (char *)libc_little,
+            {len_value}
+        );
+
+        ptrdiff_t ft_offset = ft
+            ? ft - (char *)ft_big
+            : -1;
+
+        ptrdiff_t libc_offset = libc
+            ? libc - (char *)libc_big
+            : -1;
+
+        TEST_VALUE("ft", "%td", ft_offset);
+        TEST_VALUE("libc", "%td", libc_offset);
+
+        TEST_BUFFER(
+            "ft_big",
+            ft_big,
+            sizeof(ft_big)
+        );
+
+        TEST_BUFFER(
+            "ft_little",
+            ft_little,
+            sizeof(ft_little)
+        );
+
+        TEST_BUFFER(
+            "libc_big",
+            libc_big,
+            sizeof(libc_big)
+        );
+
+        TEST_BUFFER(
+            "libc_little",
+            libc_little,
+            sizeof(libc_little)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(expected_offset if expected_offset is not None else -1),
+        "Test ft_strnstr() returned pointer",
+    )
+
+    test.value("libc").equals(
+        str(expected_offset if expected_offset is not None else -1),
+        "Reference returned pointer from strnstr() from libc",
+    ).reference()
+
+    test.buffer("ft_big").equals(
         big_original,
-        size=len(big_original),
-        type="char",
-        name="ft",
-    )
-    ft_little = c.buffer(
-        little_original,
-        size=len(little_original),
-        type="char",
-        name="ft_little",
+        "Big buffer was modified",
     )
 
-    libc_buffer = c.buffer(
+    test.buffer("ft_little").equals(
+        little_original,
+        "Little buffer was modified",
+    )
+
+    test.buffer("libc_big").equals(
         big_original,
-        size=len(big_original),
-        type="char",
-        name="libc",
-    )
-    libc_little = c.buffer(
+        "Big buffer was modified by strnstr() from libc",
+    ).reference()
+
+    test.buffer("libc_little").equals(
         little_original,
-        size=len(little_original),
-        type="char",
-        name="libc_little",
-    )
+        "Little buffer was modified by strnstr() from libc",
+    ).reference()
 
-    ft = c.ft_strnstr(
-        ft_buffer,
-        ft_little,
-        len_value,
-    )
-
-    libc = c.strnstr(
-        libc_buffer,
-        libc_little,
-        len_value,
-    )
-
-    ft.run()
-    libc.run()
-
-    if expected_offset is None:
-        libc.is_null(
-            "Test return value from strnstr() from libc",
-        )
-
-        ft.is_null(
-            "Test return value",
-        )
-    else:
-        libc.returned_pointer_is(
-            libc_buffer.offset(expected_offset),
-            "Test returned pointer from strnstr() from libc",
-        )
-
-        ft.returned_pointer_is(
-            ft_buffer.offset(expected_offset),
-            "Test returned pointer",
-        )
-
-    libc.buffer_equals(
-        libc_buffer,
-        big_original,
-        "big buffer was modified by libc",
-    )
-    libc.buffer_equals(
-        libc_little,
-        little_original,
-        "little buffer was modified by libc",
-    ).assert_reference()
-
-    ft.buffer_equals(
-        ft_buffer,
-        big_original,
-        "big buffer was modified",
-    )
-    ft.buffer_equals(
-        ft_little,
-        little_original,
-        "little buffer was modified",
-    )
-    ft.malloc_count_equals(
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("finds substring")

@@ -1,218 +1,251 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
-# NOTE: This test can be flaky since memset by libc only require return value to be >, =, < to 0 depending on the comparasion but not promising any actual value
+# NOTE: memcmp() only guarantees the return value to be
+# less than, equal to, or greater than 0. It does not
+# guarantee the exact difference between the bytes.
 suite = TestSuite("ft_memcmp")
 
 
 def compare(c, s1_original, s2_original, n, expected):
-    ft_s1 = c.buffer(
-        s1_original,
-        size=len(s1_original),
-        name="ft_s1",
-    )
-    ft_s2 = c.buffer(
-        s2_original,
-        size=len(s2_original),
-        name="ft_s2",
+    s1_c = c_bytes(s1_original)
+    s2_c = c_bytes(s2_original)
+
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_s1[] = {{{s1_c}}};
+        unsigned char ft_s2[] = {{{s2_c}}};
+
+        unsigned char libc_s1[] = {{{s1_c}}};
+        unsigned char libc_s2[] = {{{s2_c}}};
+
+        int ft = ft_memcmp(
+            ft_s1,
+            ft_s2,
+            {n}
+        );
+
+        int libc = memcmp(
+            libc_s1,
+            libc_s2,
+            {n}
+        );
+
+        TEST_VALUE("ft", "%d", ft);
+        TEST_VALUE("libc", "%d", libc);
+
+        TEST_BUFFER(
+            "ft_s1",
+            ft_s1,
+            sizeof(ft_s1)
+        );
+
+        TEST_BUFFER(
+            "ft_s2",
+            ft_s2,
+            sizeof(ft_s2)
+        );
+
+        TEST_BUFFER(
+            "libc_s1",
+            libc_s1,
+            sizeof(libc_s1)
+        );
+
+        TEST_BUFFER(
+            "libc_s2",
+            libc_s2,
+            sizeof(libc_s2)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(expected),
+        "Test ft_memcmp() returned value",
     )
 
-    libc_s1 = c.buffer(
-        s1_original,
-        size=len(s1_original),
-        name="libc_s1",
-    )
-    libc_s2 = c.buffer(
-        s2_original,
-        size=len(s2_original),
-        name="libc_s2",
-    )
+    test.value("libc").equals(
+        str(expected),
+        "Reference returned value from memcmp() from libc",
+    ).reference()
 
-    ft = c.ft_memcmp(
-        ft_s1,
-        ft_s2,
-        n,
-    )
-
-    libc = c.memcmp(
-        libc_s1,
-        libc_s2,
-        n,
-    )
-
-    ft.run()
-    libc.run()
-
-    libc.equals(
-        expected,
-        "Test with memcmp() from libc",
-    )
-    libc.buffer_equals(
-        libc_s1,
-        s1_original,
-        "s1 buffer was modified by libc",
-    )
-    libc.buffer_equals(
-        libc_s2,
-        s2_original,
-        "s2 buffer was modified by libc",
-    ).assert_reference()
-
-    ft.equals(
-        expected,
-        "Test with value",
-    )
-    ft.buffer_equals(
-        ft_s1,
+    test.buffer("ft_s1").equals(
         s1_original,
         "s1 buffer was modified",
     )
-    ft.buffer_equals(
-        ft_s2,
+
+    test.buffer("ft_s2").equals(
         s2_original,
         "s2 buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_s1").equals(
+        s1_original,
+        "s1 buffer was modified by memcmp() from libc",
+    ).reference()
+
+    test.buffer("libc_s2").equals(
+        s2_original,
+        "s2 buffer was modified by memcmp() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("identical buffers")
 def test_identical(c):
-    s1_original = b"hello"
-    s2_original = b"hello"
-    n = "5"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"hello",
+        "5",
+        0,
+    )
 
 
 @suite.case("s1 is smaller")
 def test_s1_smaller(c):
-    s1_original = b"hello"
-    s2_original = b"jello"
-    n = "5"
-    expected = ord("h") - ord("j")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"jello",
+        "5",
+        ord("h") - ord("j"),
+    )
 
 
 @suite.case("s1 is greater")
 def test_s1_greater(c):
-    s1_original = b"jello"
-    s2_original = b"hello"
-    n = "5"
-    expected = ord("j") - ord("h")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"jello",
+        b"hello",
+        "5",
+        ord("j") - ord("h"),
+    )
 
 
 @suite.case("difference in middle")
 def test_middle_difference(c):
-    s1_original = b"hello"
-    s2_original = b"heLlo"
-    n = "5"
-    expected = ord("l") - ord("L")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"heLlo",
+        "5",
+        ord("l") - ord("L"),
+    )
 
 
 @suite.case("difference at last byte")
 def test_last_difference(c):
-    s1_original = b"hella"
-    s2_original = b"hello"
-    n = "5"
-    expected = ord("a") - ord("o")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hella",
+        b"hello",
+        "5",
+        ord("a") - ord("o"),
+    )
 
 
 @suite.case("difference after n")
 def test_difference_after_n(c):
-    s1_original = b"helloX"
-    s2_original = b"helloY"
-    n = "5"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"helloX",
+        b"helloY",
+        "5",
+        0,
+    )
 
 
 @suite.case("difference at n - 1")
 def test_difference_at_n_minus_one(c):
-    s1_original = b"helloX"
-    s2_original = b"helloY"
-    n = "6"
-    expected = ord("X") - ord("Y")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"helloX",
+        b"helloY",
+        "6",
+        ord("X") - ord("Y"),
+    )
 
 
 @suite.case("zero bytes")
 def test_zero(c):
-    s1_original = b"hello"
-    s2_original = b"world"
-    n = "0"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"world",
+        "0",
+        0,
+    )
 
 
 @suite.case("one byte")
 def test_one(c):
-    s1_original = b"hello"
-    s2_original = b"jello"
-    n = "1"
-    expected = ord("h") - ord("j")
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"jello",
+        "1",
+        ord("h") - ord("j"),
+    )
 
 
 @suite.case("different lengths")
 def test_different_lengths(c):
-    s1_original = b"hello"
-    s2_original = b"hello world"
-    n = "5"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello",
+        b"hello world",
+        "5",
+        0,
+    )
 
 
 @suite.case("null byte")
 def test_null_byte(c):
-    s1_original = b"hello\x00wor\00ld"
-    s2_original = b"hello\x00wor\00ld"
-    n = "11"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"hello\x00wor\x00ld",
+        b"hello\x00wor\x00ld",
+        "11",
+        0,
+    )
 
 
 @suite.case("binary data")
 def test_binary(c):
-    s1_original = b"\x01\x80\xff\x7f"
-    s2_original = b"\x01\x80\x7f\x7f"
-    n = "4"
-    expected = 0xFF - 0x7F
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"\x01\x80\xff\x7f",
+        b"\x01\x80\x7f\x7f",
+        "4",
+        0xFF - 0x7F,
+    )
 
 
 @suite.case("unsigned byte comparison")
 def test_unsigned_bytes(c):
-    s1_original = b"\xff"
-    s2_original = b"\x01"
-    n = "1"
-    expected = 0xFF - 0x01
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"\xff",
+        b"\x01",
+        "1",
+        0xFF - 0x01,
+    )
 
 
 @suite.case("empty buffers")
 def test_empty(c):
-    # FIXME: doesn't support zero size buffer yet
-    s1_original = b"abcd"
-    s2_original = b"efgh"
-    n = "0"
-    expected = 0
-
-    compare(c, s1_original, s2_original, n, expected)
+    compare(
+        c,
+        b"abcd",
+        b"efgh",
+        "0",
+        0,
+    )

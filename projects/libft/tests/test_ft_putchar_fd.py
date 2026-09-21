@@ -1,68 +1,92 @@
-from framework import CFileDescriptor, TestSuite
+from framework import TestSuite
 
 suite = TestSuite("ft_putchar_fd")
 
 
 def compare_stdout(c, character, expected):
-    ft = c.ft_putchar_fd(
-        character,
-        1,
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        ft_putchar_fd(
+            {character},
+            1
+        );
+
+        return 0;
+        """
     )
 
-    ft.run()
-
-    ft.stdout_equals(
+    test.stdout().equals(
         expected,
         "Character was not written to stdout",
     )
-    ft.stderr_equals(
+
+    test.stderr().equals(
         b"",
         "Unexpected output on stderr",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 def compare_stderr(c, character, expected):
-    ft = c.ft_putchar_fd(
-        character,
-        2,
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        ft_putchar_fd(
+            {character},
+            2
+        );
+
+        return 0;
+        """
     )
 
-    ft.run()
-
-    ft.stdout_equals(
+    test.stdout().equals(
         b"",
         "Unexpected output on stdout",
     )
-    ft.stderr_equals(
+
+    test.stderr().equals(
         expected,
         "Character was not written to stderr",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 def compare_fd(c, character, fd, expected):
-    ft = c.ft_putchar_fd(
-        character,
-        fd,
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        ft_putchar_fd(
+            {character},
+            {fd}
+        );
+
+        return 0;
+        """
     )
 
-    ft.run()
-
-    ft.stdout_equals(
+    test.stdout().equals(
         b"",
         "Unexpected output on stdout",
     )
-    ft.stderr_equals(
+
+    test.stderr().equals(
         b"",
         "Unexpected output on stderr",
     )
-    ft.fd_equals(
-        fd,
+
+    test.fd(fd).equals(
         expected,
         "Character was not written to the specified fd",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 @suite.case("stdout")
@@ -77,9 +101,7 @@ def test_stderr(c):
 
 @suite.case("custom file descriptor")
 def test_custom_fd(c):
-    fd = c.fd()
-
-    compare_fd(c, "'A'", fd, b"A")
+    compare_fd(c, "'A'", 3, b"A")
 
 
 @suite.case("lowercase")
@@ -119,13 +141,9 @@ def test_null(c):
 
 @suite.case("high byte")
 def test_high_byte(c):
-    fd = c.fd()
-
-    compare_fd(c, "0x80", fd, b"\x80")
+    compare_fd(c, "0x80", 3, b"\x80")
 
 
 @suite.case("0xFF byte")
 def test_ff(c):
-    fd = c.fd()
-
-    compare_fd(c, "0xff", fd, b"\xff")
+    compare_fd(c, "0xff", 3, b"\xff")

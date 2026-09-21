@@ -1,242 +1,202 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strlcat")
 
 
 def compare(c, dest_original, src_original, size, expected, return_expected):
-    ft_dest = c.buffer(
-        dest_original,
-        size=len(dest_original),
-        type="char",
-        name="ft_dest",
-    )
-    ft_src = c.buffer(
-        src_original,
-        size=len(src_original),
-        type="char",
-        name="ft_src",
+    dest_c = c_bytes(dest_original)
+    src_c = c_bytes(src_original)
+
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_dest[] = {{{dest_c}}};
+        unsigned char ft_src[] = {{{src_c}}};
+
+        unsigned char libc_dest[] = {{{dest_c}}};
+        unsigned char libc_src[] = {{{src_c}}};
+
+        size_t ft = ft_strlcat(
+            (char *)ft_dest,
+            (char *)ft_src,
+            {size}
+        );
+
+        size_t libc = strlcat(
+            (char *)libc_dest,
+            (char *)libc_src,
+            {size}
+        );
+
+        TEST_VALUE("ft", "%zu", ft);
+        TEST_VALUE("libc", "%zu", libc);
+
+        TEST_BUFFER(
+            "ft_dest",
+            ft_dest,
+            sizeof(ft_dest)
+        );
+
+        TEST_BUFFER(
+            "ft_src",
+            ft_src,
+            sizeof(ft_src)
+        );
+
+        TEST_BUFFER(
+            "libc_dest",
+            libc_dest,
+            sizeof(libc_dest)
+        );
+
+        TEST_BUFFER(
+            "libc_src",
+            libc_src,
+            sizeof(libc_src)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(return_expected),
+        "Test ft_strlcat() returned value",
     )
 
-    libc_dest = c.buffer(
-        dest_original,
-        size=len(dest_original),
-        type="char",
-        name="libc_dest",
-    )
-    libc_src = c.buffer(
-        src_original,
-        size=len(src_original),
-        type="char",
-        name="libc_src",
-    )
+    test.value("libc").equals(
+        str(return_expected),
+        "Reference returned value from strlcat() from libc",
+    ).reference()
 
-    ft = c.ft_strlcat(
-        ft_dest,
-        ft_src,
-        size,
-    )
-
-    libc = c.strlcat(
-        libc_dest,
-        libc_src,
-        size,
-    )
-
-    ft.run()
-    libc.run()
-
-    libc.equals(
-        return_expected,
-        "Test with return value from strlcat() from libc",
-    )
-    libc.buffer_equals(
-        libc_dest,
-        expected,
-        "Test destination buffer from strlcat() from libc",
-    )
-    libc.buffer_equals(
-        libc_src,
-        src_original,
-        "Test that source buffer was not modified by strlcat() from libc",
-    ).assert_reference()
-
-    ft.equals(
-        return_expected,
-        "Test with return value",
-    )
-    ft.buffer_equals(
-        ft_dest,
+    test.buffer("ft_dest").equals(
         expected,
         "Test destination buffer",
     )
-    ft.buffer_equals(
-        ft_src,
+
+    test.buffer("libc_dest").equals(
+        expected,
+        "Test destination buffer from strlcat() from libc",
+    ).reference()
+
+    test.buffer("ft_src").equals(
         src_original,
-        "Test that source buffer was not modified",
+        "Source buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_src").equals(
+        src_original,
+        "Source buffer was modified by strlcat() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("empty destination")
 def test_empty_dest(c):
-    dest_original = b"\x00XXXXXXXXX"
-    src_original = b"hello\x00"
-    size = "10"
-    expected = b"hello\x00XXXX"
-    return_expected = 5
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"\x00XXXXXXXXX",
+        b"hello\x00",
+        "10",
+        b"hello\x00XXXX",
+        5,
     )
 
 
 @suite.case("empty source")
 def test_empty_src(c):
-    dest_original = b"hello\x00XXXX"
-    src_original = b"\x00"
-    size = "10"
-    expected = b"hello\x00XXXX"
-    return_expected = 5
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXX",
+        b"\x00",
+        "10",
+        b"hello\x00XXXX",
+        5,
     )
 
 
 @suite.case("normal concatenation")
 def test_normal_concat(c):
-    dest_original = b"hello\x00XXXXXXXXX"
-    src_original = b" world\x00"
-    size = "15"
-    expected = b"hello world\x00XXX"
-    return_expected = 11
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXXXXXXX",
+        b" world\x00",
+        "15",
+        b"hello world\x00XXX",
+        11,
     )
 
 
 @suite.case("fits exactly")
 def test_fits_exactly(c):
-    dest_original = b"hello\x00XXXX"
-    src_original = b"!!\x00"
-    size = "8"
-    expected = b"hello!!\x00XX"
-    return_expected = 7
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXX",
+        b"!!\x00",
+        "8",
+        b"hello!!\x00XX",
+        7,
     )
 
 
 @suite.case("truncated")
 def test_truncated(c):
-    dest_original = b"hello\x00XXXX"
-    src_original = b" world!\x00"
-    size = "10"
-    expected = b"hello wor\x00"
-    return_expected = 12
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXX",
+        b" world!\x00",
+        "10",
+        b"hello wor\x00",
+        12,
     )
 
 
 @suite.case("size zero")
 def test_size_zero(c):
-    dest_original = b"hello\x00XXXX"
-    src_original = b" world\x00"
-    size = "0"
-    expected = b"hello\x00XXXX"
-    return_expected = 6
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXX",
+        b" world\x00",
+        "0",
+        b"hello\x00XXXX",
+        6,
     )
 
 
 @suite.case("size smaller than destination")
 def test_size_smaller_than_dest(c):
-    dest_original = b"hello\x00XXXX"
-    src_original = b" world\x00"
-    size = "3"
-    expected = b"hello\x00XXXX"
-    return_expected = 9
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"hello\x00XXXX",
+        b" world\x00",
+        "3",
+        b"hello\x00XXXX",
+        9,
     )
 
 
 @suite.case("one byte buffer")
 def test_one_byte_buffer(c):
-    dest_original = b"\x00XXXXXXXXX"
-    src_original = b"hello\x00"
-    size = "1"
-    expected = b"\x00XXXXXXXXX"
-    return_expected = 5
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"\x00XXXXXXXXX",
+        b"hello\x00",
+        "1",
+        b"\x00XXXXXXXXX",
+        5,
     )
 
 
 @suite.case("binary data")
 def test_binary(c):
-    dest_original = b"abc\x00XXXXXX"
-    src_original = b"\x01\x02\x03\x00"
-    size = "10"
-    expected = b"abc\x01\x02\x03\x00XXX"
-    return_expected = 6
-
     compare(
         c,
-        dest_original,
-        src_original,
-        size,
-        expected,
-        return_expected,
+        b"abc\x00XXXXXX",
+        b"\x01\x02\x03\x00",
+        "10",
+        b"abc\x01\x02\x03\x00XXX",
+        6,
     )

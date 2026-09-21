@@ -250,7 +250,6 @@ def run_project(
 
     context = CContext(
         project,
-        project.functions,
         debug=debug,
         asan=True,
     )

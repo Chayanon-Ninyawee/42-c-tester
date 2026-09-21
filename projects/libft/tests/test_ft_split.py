@@ -1,158 +1,222 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_split")
 
 
 def compare(c, original, delimiter, expected):
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
-    )
+    original_c = c_bytes(original)
 
-    ft = c.ft_split(
-        ft_s,
-        delimiter,
-    )
+    buffer_reports = "\n".join(f"""
+        TEST_BUFFER(
+            "ft_result_{i}",
+            ft[{i}],
+            {len(word)}
+        );
+        """ for i, word in enumerate(expected))
 
-    capture = Capture.pointer_array(len(expected) + 1)
+    free_results = "\n".join(f"free(ft[{i}]);" for i in range(len(expected)))
 
-    for word in expected:
-        capture.child(Capture.buffer(len(word)))
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-    capture.child(Capture.pointer_raw())
+        char **ft = ft_split(
+            (char *)ft_s,
+            {delimiter}
+        );
 
-    ft.capture_return(capture)
-    ft.run()
+        int ft_is_null = (ft == NULL);
 
-    ft.malloc_count_equals(
-        len(expected) + 1,
-        "Test malloc count",
-    )
-    ft.malloc_size_equals(
-        0,
-        (len(expected) + 1) * 8,
-        "Test malloc size",
-    )
-    for i in range(len(expected)):
-        ft.malloc_size_equals(
-            i + 1,
-            len(expected[i]),
-            "Test malloc size",
-        )
-    ft.buffer_equals(
-        ft_s,
-        original,
-        "Source buffer was modified",
-    )
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
 
-    assert_capture = Assert.pointer_array()
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
 
-    for word in expected:
-        assert_capture.child(Assert.buffer_equals(word))
+        if (ft != NULL) {{
+            {buffer_reports}
 
-    assert_capture.child(
-        Assert.is_null_pointer("returned char * array is not NULL terminated")
-    )
+            int ft_is_terminated = (ft[{len(expected)}] == NULL);
 
-    ft.assert_return(
-        assert_capture,
+            TEST_VALUE(
+                "ft_is_terminated",
+                "%d",
+                ft_is_terminated
+            );
+
+            {free_results}
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
 
-    ft.assert_now()
-
-
-def test_malloc_failures(c, original, delimiter, expected):
-    c.malloc.reset()
-
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
+    test.value("ft_is_terminated").equals(
+        "1",
+        "Returned char * array is not NULL terminated",
     )
 
-    # First run must succeed so we can determine how many allocations
-    # the function normally performs.
-    ft = c.ft_split(
-        ft_s,
-        delimiter,
-    )
-
-    capture = Capture.pointer_array(len(expected) + 1)
-
-    for word in expected:
-        capture.child(Capture.buffer(len(word)))
-
-    capture.child(Capture.pointer_raw())
-
-    ft.capture_return(capture)
-    ft.run()
-
-    ft.malloc_count_equals(
+    test.malloc.count(
         len(expected) + 1,
         "Test malloc count",
     )
-    ft.malloc_size_equals(
+
+    test.malloc.size(
         0,
         (len(expected) + 1) * 8,
         "Test malloc size",
     )
-    for i in range(len(expected)):
-        ft.malloc_size_equals(
+
+    for i, word in enumerate(expected):
+        test.malloc.size(
             i + 1,
-            len(expected[i]),
+            len(word),
             "Test malloc size",
         )
-    ft.buffer_equals(
-        ft_s,
+
+        test.buffer(f"ft_result_{i}").equals(
+            word,
+            "Returned buffer mismatch",
+        )
+
+    test.buffer("ft_s").equals(
         original,
         "Source buffer was modified",
     )
 
-    assert_capture = Assert.pointer_array()
+    test.assert_now()
 
-    for word in expected:
-        assert_capture.child(Assert.buffer_equals(word))
 
-    assert_capture.child(
-        Assert.is_null_pointer("returned char * array is not NULL terminated")
-    )
+def test_malloc_failures(c, original, delimiter, expected):
+    original_c = c_bytes(original)
 
-    ft.assert_return(
-        assert_capture,
-        "Initial allocation test",
-    )
-    ft.assert_now()
+    buffer_reports = "\n".join(f"""
+        TEST_BUFFER(
+            "ft_result_{i}",
+            ft[{i}],
+            {len(word)}
+        );
+        """ for i, word in enumerate(expected))
 
-    malloc_count = ft.malloc_count
+    free_results = "\n".join(f"free(ft[{i}]);" for i in range(len(expected)))
 
-    # Fail every allocation individually.
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-        ft = c.ft_split(
+        char **ft = ft_split(
+            (char *)ft_s,
+            {delimiter}
+        );
+
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
             ft_s,
-            delimiter,
+            sizeof(ft_s)
+        );
+
+        if (ft != NULL) {{
+            {buffer_reports}
+
+            int ft_is_terminated = (ft[{len(expected)}] == NULL);
+
+            TEST_VALUE(
+                "ft_is_terminated",
+                "%d",
+                ft_is_terminated
+            );
+
+            {free_results}
+            free(ft);
+        }}
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
+        "Test return value",
+    )
+
+    test.value("ft_is_terminated").equals(
+        "1",
+        "Returned char * array is not NULL terminated",
+    )
+
+    test.malloc.count(
+        len(expected) + 1,
+        "Test malloc count",
+    )
+
+    test.malloc.size(
+        0,
+        (len(expected) + 1) * 8,
+        "Test malloc size",
+    )
+
+    for i, word in enumerate(expected):
+        test.malloc.size(
+            i + 1,
+            len(word),
+            "Test malloc size",
         )
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        test.buffer(f"ft_result_{i}").equals(
+            word,
+            "Returned buffer mismatch",
+        )
 
-        ft.is_null(
+    test.buffer("ft_s").equals(
+        original,
+        "Source buffer was modified",
+    )
+
+    test.assert_now()
+
+    for fail_at in range(len(expected) + 1):
+        test = c.include("libft.h").code(f"""
+            unsigned char ft_s[] = {{{original_c}}};
+
+            char **ft = ft_split(
+                (char *)ft_s,
+                {delimiter}
+            );
+
+            int ft_is_null = (ft == NULL);
+
+            TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+            TEST_BUFFER(
+                "ft_s",
+                ft_s,
+                sizeof(ft_s)
+            );
+
+            return 0;
+        """)
+
+        test.malloc.fail_at(fail_at)
+
+        test.value("ft_is_null").equals(
+            "1",
             f"malloc failure at call {fail_at}",
         )
-        ft.buffer_equals(
-            ft_s,
+
+        test.buffer("ft_s").equals(
             original,
             "Source buffer was modified",
         )
 
-        ft.assert_now()
-
-    c.malloc.reset()
+        test.assert_now()
 
 
 @suite.case("empty string")

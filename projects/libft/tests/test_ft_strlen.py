@@ -1,137 +1,118 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strlen")
 
 
 def compare(c, original, expected):
-    ft_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft",
+    original_c = c_bytes(original)
+
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_buffer[] = {{{original_c}}};
+        unsigned char libc_buffer[] = {{{original_c}}};
+
+        size_t ft = ft_strlen((char *)ft_buffer);
+        size_t libc = strlen((char *)libc_buffer);
+
+        TEST_VALUE("ft", "%zu", ft);
+        TEST_VALUE("libc", "%zu", libc);
+
+        TEST_BUFFER(
+            "ft_buffer",
+            ft_buffer,
+            sizeof(ft_buffer)
+        );
+
+        TEST_BUFFER(
+            "libc_buffer",
+            libc_buffer,
+            sizeof(libc_buffer)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(expected),
+        "Test ft_strlen() returned value",
     )
 
-    libc_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="libc",
-    )
+    test.value("libc").equals(
+        str(expected),
+        "Reference returned value from strlen() from libc",
+    ).reference()
 
-    ft = c.ft_strlen(ft_buffer)
-    libc = c.strlen(libc_buffer)
-
-    ft.run()
-    libc.run()
-
-    libc.equals(
-        expected,
-        "Test with strlen() from libc",
-    )
-    libc.buffer_equals(
-        libc_buffer,
-        original,
-        "Input buffer was modified by libc",
-    ).assert_reference()
-
-    ft.equals(
-        expected,
-        "Test with value",
-    )
-    ft.buffer_equals(
-        ft_buffer,
+    test.buffer("ft_buffer").equals(
         original,
         "Input buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_buffer").equals(
+        original,
+        "Input buffer was modified by libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("empty string has length 0")
 def test_empty(c):
-    original = b"\x00"
-    expected = 0
-
-    compare(c, original, expected)
+    compare(c, b"\x00", 0)
 
 
 @suite.case("'a' has length 1")
 def test_single_character(c):
-    original = b"a\x00"
-    expected = 1
-
-    compare(c, original, expected)
+    compare(c, b"a\x00", 1)
 
 
 @suite.case("'hello' has length 5")
 def test_basic(c):
-    original = b"hello\x00"
-    expected = 5
-
-    compare(c, original, expected)
+    compare(c, b"hello\x00", 5)
 
 
 @suite.case("'Hello World' has length 11")
 def test_spaces(c):
-    original = b"Hello World\x00"
-    expected = 11
-
-    compare(c, original, expected)
+    compare(c, b"Hello World\x00", 11)
 
 
 @suite.case("string with spaces")
 def test_multiple_spaces(c):
-    original = b"hello  world\x00"
-    expected = 12
-
-    compare(c, original, expected)
+    compare(c, b"hello  world\x00", 12)
 
 
 @suite.case("digits are counted")
 def test_digits(c):
-    original = b"1234567890\x00"
-    expected = 10
-
-    compare(c, original, expected)
+    compare(c, b"1234567890\x00", 10)
 
 
 @suite.case("punctuation is counted")
 def test_punctuation(c):
-    original = b"!@#$%^&*()\x00"
-    expected = 10
-
-    compare(c, original, expected)
+    compare(c, b"!@#$%^&*()\x00", 10)
 
 
 @suite.case("uppercase and lowercase are counted")
 def test_mixed_case(c):
-    original = b"AbCdEf\x00"
-    expected = 6
-
-    compare(c, original, expected)
+    compare(c, b"AbCdEf\x00", 6)
 
 
 @suite.case("newline is counted")
 def test_newline(c):
-    original = b"hello\nworld\x00"
-    expected = 11
-
-    compare(c, original, expected)
+    compare(c, b"hello\nworld\x00", 11)
 
 
 @suite.case("tab is counted")
 def test_tab(c):
-    original = b"hello\tworld\x00"
-    expected = 11
-
-    compare(c, original, expected)
+    compare(c, b"hello\tworld\x00", 11)
 
 
 @suite.case("long string")
 def test_long_string(c):
-    original = b"This is a reasonably long string for testing\x00"
-    expected = 44
-
-    compare(c, original, expected)
+    compare(
+        c,
+        b"This is a reasonably long string for testing\x00",
+        44,
+    )

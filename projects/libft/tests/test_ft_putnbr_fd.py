@@ -4,43 +4,51 @@ suite = TestSuite("ft_putnbr_fd")
 
 
 def compare(c, number, fd, expected):
-    ft = c.ft_putnbr_fd(
-        number,
-        fd,
+    test = c.include(
+        "libft.h",
+    ).code(
+        f"""
+        ft_putnbr_fd(
+            {number},
+            {fd}
+        );
+
+        return 0;
+        """
     )
 
-    ft.run()
-
     if fd == 1:
-        ft.stdout_equals(
+        test.stdout().equals(
             expected,
             "Number was not written to stdout",
         )
-        ft.stderr_equals(
+
+        test.stderr().equals(
             b"",
             "Unexpected output on stderr",
         )
     elif fd == 2:
-        ft.stdout_equals(
+        test.stdout().equals(
             b"",
             "Unexpected output on stdout",
         )
-        ft.stderr_equals(
+
+        test.stderr().equals(
             expected,
             "Number was not written to stderr",
         )
     else:
-        ft.fd_equals(
-            fd,
+        test.fd(fd).equals(
             expected,
             "Number was not written to the specified fd",
         )
 
-    ft.malloc_count_equals(
+    test.malloc.count(
         0,
         "ft_putnbr_fd must not allocate memory",
     )
-    ft.assert_now()
+
+    test.assert_now()
 
 
 @suite.case("zero")
@@ -155,36 +163,30 @@ def test_stderr(c):
 
 @suite.case("custom file descriptor")
 def test_custom_fd(c):
-    fd = c.fd()
-
     compare(
         c,
         12345,
-        fd,
+        3,
         b"12345",
     )
 
 
 @suite.case("custom fd negative")
 def test_custom_fd_negative(c):
-    fd = c.fd()
-
     compare(
         c,
         -987654,
-        fd,
+        3,
         b"-987654",
     )
 
 
 @suite.case("custom fd zero")
 def test_custom_fd_zero(c):
-    fd = c.fd()
-
     compare(
         c,
         0,
-        fd,
+        3,
         b"0",
     )
 

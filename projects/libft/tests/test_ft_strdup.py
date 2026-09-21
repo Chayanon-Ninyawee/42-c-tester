@@ -1,146 +1,194 @@
-from framework import Assert, Capture, TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_strdup")
 
 
 def compare(c, original):
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
-    )
+    original_c = c_bytes(original)
+    size = len(original)
 
-    libc_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="libc_s",
-    )
+    test = c.include("libft.h", "string.h").code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
+        unsigned char libc_s[] = {{{original_c}}};
 
-    ft = c.ft_strdup(ft_s)
-    libc = c.strdup(libc_s)
+        char *ft = ft_strdup((char *)ft_s);
+        char *libc = strdup((char *)libc_s);
 
-    ft.capture_return(
-        Capture.buffer(len(original)),
-    )
-    libc.capture_return(
-        Capture.buffer(len(original)),
-    )
+        int ft_is_null = (ft == NULL);
+        int libc_is_null = (libc == NULL);
 
-    ft.run()
-    libc.run()
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+        TEST_VALUE("libc_is_null", "%d", libc_is_null);
 
-    ft.is_not_null(
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
+
+        TEST_BUFFER(
+            "libc_s",
+            libc_s,
+            sizeof(libc_s)
+        );
+
+        if (ft != NULL)
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {size}
+            );
+
+        if (libc != NULL)
+            TEST_BUFFER(
+                "libc_result",
+                libc,
+                {size}
+            );
+
+        if (ft)
+            free(ft);
+        if (libc)
+            free(libc);
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
-        1,
-        "Test malloc count",
-    )
-    ft.malloc_size_equals(
-        0,
-        len(original),
-        "Test malloc size",
-    )
-    ft.buffer_equals(
-        ft_s,
+
+    test.value("libc_is_null").equals(
+        "0",
+        "Reference return value from strdup() from libc",
+    ).reference()
+
+    test.buffer("ft_s").equals(
         original,
         "Source buffer was modified",
     )
-    ft.assert_return(
-        Assert.buffer_equals(
-            original,
-        ),
+
+    test.buffer("libc_s").equals(
+        original,
+        "Source buffer was modified by strdup() from libc",
+    ).reference()
+
+    test.buffer("ft_result").equals(
+        original,
         "Returned buffer mismatch",
     )
 
-    libc.is_not_null(
-        "Test return value from strdup() from libc",
-    )
-    libc.buffer_equals(
-        libc_s,
+    test.buffer("libc_result").equals(
         original,
-        "Source buffer was modified by strdup() from libc",
-    )
-    libc.assert_return(
-        Assert.buffer_equals(
-            original,
-        ),
         "Returned buffer mismatch from strdup() from libc",
+    ).reference()
+
+    test.malloc.count(
+        1,
+        "Test malloc count",
     )
 
-    libc.assert_reference()
-    ft.assert_now()
+    test.malloc.size(
+        0,
+        size,
+        "Test malloc size",
+    )
+
+    test.assert_now()
 
 
 def test_malloc_failures(c, original):
-    c.malloc.reset()
+    original_c = c_bytes(original)
+    size = len(original)
 
-    ft_s = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft_s",
-    )
+    test = c.include("libft.h").code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-    # Successful run to determine allocation count.
-    ft = c.ft_strdup(ft_s)
+        char *ft = ft_strdup((char *)ft_s);
 
-    ft.capture_return(
-        Capture.buffer(len(original)),
-    )
-    ft.run()
+        int ft_is_null = (ft == NULL);
 
-    ft.is_not_null(
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
+            ft_s,
+            sizeof(ft_s)
+        );
+
+        if (ft != NULL)
+            TEST_BUFFER(
+                "ft_result",
+                ft,
+                {size}
+            );
+
+        if (ft)
+            free(ft);
+
+        return 0;
+    """)
+
+    test.value("ft_is_null").equals(
+        "0",
         "Test return value",
     )
-    ft.malloc_count_equals(
-        1,
-        "Test malloc count",
-    )
-    ft.malloc_size_equals(
-        0,
-        len(original),
-        "Test malloc size",
-    )
-    ft.buffer_equals(
-        ft_s,
+
+    test.buffer("ft_s").equals(
         original,
         "Source buffer was modified",
     )
 
-    ft.assert_return(
-        Assert.buffer_equals(
-            original,
-        ),
+    test.buffer("ft_result").equals(
+        original,
         "Returned buffer mismatch",
     )
 
-    ft.assert_now()
+    test.malloc.count(
+        1,
+        "Test malloc count",
+    )
 
-    malloc_count = ft.malloc_count
+    test.malloc.size(
+        0,
+        size,
+        "Test malloc size",
+    )
 
-    for fail_at in range(malloc_count):
-        c.malloc.fail_at(fail_at)
+    test.assert_now()
 
-        ft = c.ft_strdup(ft_s)
+    test = c.include("libft.h").code(f"""
+        unsigned char ft_s[] = {{{original_c}}};
 
-        # Expect pointer to be null so no need to free, and no need to read what inside
-        ft.run()
+        char *ft = ft_strdup((char *)ft_s);
 
-        ft.is_null(
-            f"malloc failure at call {fail_at}",
-        )
-        ft.buffer_equals(
+        int ft_is_null = (ft == NULL);
+
+        TEST_VALUE("ft_is_null", "%d", ft_is_null);
+
+        TEST_BUFFER(
+            "ft_s",
             ft_s,
-            original,
-            "Source buffer was modified",
-        )
+            sizeof(ft_s)
+        );
 
-        ft.assert_now()
+        return 0;
+    """)
 
-    c.malloc.reset()
+    test.malloc.fail_at(0)
+
+    test.value("ft_is_null").equals(
+        "1",
+        "malloc failure at call 0",
+    )
+
+    test.buffer("ft_s").equals(
+        original,
+        "Source buffer was modified",
+    )
+
+    test.assert_now()
 
 
 @suite.case("empty string")
@@ -177,7 +225,10 @@ def test_special(c):
 
 @suite.case("large string 1")
 def test_large_1(c):
-    compare(c, (b"0123456789" * 100 + b"\0"))
+    compare(
+        c,
+        b"0123456789" * 100 + b"\0",
+    )
 
 
 @suite.case("large string 2")

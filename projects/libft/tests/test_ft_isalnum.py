@@ -4,29 +4,32 @@ suite = TestSuite("ft_isalnum")
 
 
 def compare(c, argument, expected):
-    ft = c.ft_isalnum(argument)
-    libc = c.isalnum(argument)
+    test = c.include("libft.h", "ctype.h").code(f"""
+        int ft = ft_isalnum({argument});
+        int libc = !!isalnum({argument});
 
-    ft.run()
-    libc.run()
+        TEST_VALUE("ft", "%d", ft);
+        TEST_VALUE("libc", "%d", libc);
 
-    # NOTE: this is because some libc implementation will return other non-zero int instead of 1
-    libc_value = int(bool(libc.parsed_value))
+        return 0;
+    """)
 
-    libc.value_equals(
-        libc_value,
-        expected,
-        "Test with isalnum() from libc",
-    ).assert_reference()
-
-    ft.equals(
-        expected,
-        "Test with value",
+    test.value("ft").equals(
+        str(expected),
+        "Test ft_isalnum() returned value",
     )
-    ft.malloc_count_equals(
+
+    test.value("libc").equals(
+        str(expected),
+        "Reference value from isalnum()",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("'A' is alphanumeric")

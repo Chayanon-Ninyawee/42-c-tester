@@ -1,57 +1,62 @@
-from framework import TestSuite
+from framework import TestSuite, c_bytes
 
 suite = TestSuite("ft_atoi")
 
 
 def compare(c, original, expected):
-    ft_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="ft",
+    original_c = c_bytes(original)
+
+    test = c.include("libft.h", "stdlib.h").code(f"""
+        unsigned char ft_buffer[] = {{{original_c}}};
+        unsigned char libc_buffer[] = {{{original_c}}};
+
+        int ft = ft_atoi((char *)ft_buffer);
+        int libc = atoi((char *)libc_buffer);
+
+        TEST_VALUE("ft", "%d", ft);
+        TEST_VALUE("libc", "%d", libc);
+
+        TEST_BUFFER(
+            "ft_buffer",
+            ft_buffer,
+            sizeof(ft_buffer)
+        );
+
+        TEST_BUFFER(
+            "libc_buffer",
+            libc_buffer,
+            sizeof(libc_buffer)
+        );
+
+        return 0;
+    """)
+
+    test.value("ft").equals(
+        str(expected),
+        "Test ft_atoi() returned value",
     )
 
-    libc_buffer = c.buffer(
-        original,
-        size=len(original),
-        type="char",
-        name="libc",
-    )
+    test.value("libc").equals(
+        str(expected),
+        "Reference returned value from atoi() from libc",
+    ).reference()
 
-    ft = c.ft_atoi(
-        ft_buffer,
-    )
-
-    libc = c.atoi(
-        libc_buffer,
-    )
-
-    ft.run()
-    libc.run()
-
-    libc.equals(
-        expected,
-        "Test with atoi() from libc",
-    )
-    libc.buffer_equals(
-        libc_buffer,
-        original,
-        "Input buffer was modified by libc",
-    ).assert_reference()
-
-    ft.equals(
-        expected,
-        "Test with value",
-    )
-    ft.buffer_equals(
-        ft_buffer,
+    test.buffer("ft_buffer").equals(
         original,
         "Input buffer was modified",
     )
-    ft.malloc_count_equals(
+
+    test.buffer("libc_buffer").equals(
+        original,
+        "Input buffer was modified by atoi() from libc",
+    ).reference()
+
+    test.malloc.count(
         0,
         "Test malloc count",
-    ).assert_now()
+    )
+
+    test.assert_now()
 
 
 @suite.case("positive number")
