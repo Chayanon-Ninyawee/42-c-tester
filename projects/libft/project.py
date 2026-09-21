@@ -52,5 +52,6 @@ project = Project(
         "ft_putnbr_fd",
         "ft_lstnew",
         "ft_lstadd_front",
+        "ft_lstsize",
     ],
 )
