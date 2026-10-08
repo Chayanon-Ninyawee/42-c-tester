@@ -17,6 +17,17 @@ class BuildConfig:
 
 
 @dataclass
+class NorminetteConfig:
+    enabled: bool = True
+    paths: list[str] = field(default_factory=lambda: ["."])
+
+
+@dataclass
+class GFMNorminetteConfig:
+    enabled: bool = True
+
+
+@dataclass
 class TestConfig:
     includes: list[str] = field(default_factory=list)
     cflags: list[str] = field(default_factory=list)
@@ -30,3 +41,5 @@ class Project:
     test: TestConfig = field(default_factory=TestConfig)
     tests: list[str] = field(default_factory=list)
     directory: Path | None = None
+    norminette: NorminetteConfig = field(default_factory=NorminetteConfig)
+    gfm_norminette: GFMNorminetteConfig = field(default_factory=GFMNorminetteConfig)

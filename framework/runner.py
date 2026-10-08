@@ -4,6 +4,8 @@ from pathlib import Path
 from .builder import BuildError, create_builder
 from .c import CContext
 from .color import Color, color
+from .gfm_norminette import GFMNorminetteError, run_gfm_norminette
+from .norminette import NorminetteError, run_norminette
 from .result import (
     AssertionFailure,
     TestResult,
@@ -202,13 +204,88 @@ def run_project(
         )
     )
 
-    print(f"{color('Project:', Color.BOLD)}   " f"{project.name}")
+    print(f"{color('Project:', Color.BOLD)}   {project.name}")
+    print(f"{color('Directory:', Color.BOLD)} {project_dir}")
 
-    print(f"{color('Directory:', Color.BOLD)} " f"{project_dir}")
+    norminette_failed = False
+    gfm_norminette_failed = False
+
+    # --------------------------------------------------------
+    # Official Norminette
+    # --------------------------------------------------------
+
+    if project.norminette.enabled:
+        print()
+        print(
+            color(
+                "Running Norminette...",
+                Color.BOLD,
+                Color.YELLOW,
+            )
+        )
+
+        try:
+            run_norminette(
+                project_dir,
+                project.norminette.paths,
+            )
+
+        except NorminetteError as error:
+            norminette_failed = True
+
+            print()
+            print(
+                color(
+                    f"[NORMINETTE ERROR] {error}",
+                    Color.BOLD,
+                    Color.RED,
+                )
+            )
+
+        else:
+            print()
+            print(
+                color(
+                    "[NORMINETTE PASS]",
+                    Color.GREEN,
+                )
+            )
+
+    # --------------------------------------------------------
+    # GFM-Norminette
+    # --------------------------------------------------------
+
+    if project.gfm_norminette.enabled:
+        print()
+
+        try:
+            if not run_gfm_norminette(project_dir):
+                gfm_norminette_failed = True
+
+        except GFMNorminetteError as error:
+            gfm_norminette_failed = True
+
+            print()
+            print(
+                color(
+                    f"[GFM-NORMINETTE ERROR] {error}",
+                    Color.BOLD,
+                    Color.RED,
+                )
+            )
+
+    # --------------------------------------------------------
+    # Build
+    # --------------------------------------------------------
 
     print()
-
-    print(color("Building...", Color.BOLD, Color.YELLOW))
+    print(
+        color(
+            "Building...",
+            Color.BOLD,
+            Color.YELLOW,
+        )
+    )
 
     try:
         builder = create_builder(
@@ -228,6 +305,10 @@ def run_project(
             )
         )
         return
+
+    # --------------------------------------------------------
+    # Tests
+    # --------------------------------------------------------
 
     test_files = find_test_files(project)
 
@@ -259,13 +340,10 @@ def run_project(
     for test_file in test_files:
         module = load_test(test_file)
 
-        if not hasattr(
-            module,
-            "suite",
-        ):
+        if not hasattr(module, "suite"):
             print(
                 color(
-                    f"[WARNING] " f"{test_file.name} " "has no suite",
+                    f"[WARNING] {test_file.name} has no suite",
                     Color.YELLOW,
                 )
             )
@@ -276,6 +354,10 @@ def run_project(
             results,
         )
 
+    # --------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------
+
     print()
     print(
         color(
@@ -284,15 +366,23 @@ def run_project(
         )
     )
 
-    print(f"{color('Passed:', Color.GREEN)} " f"{results.passed}")
+    if project.norminette.enabled:
+        if norminette_failed:
+            print(f"{color('Norminette:', Color.RED)} FAIL")
+        else:
+            print(f"{color('Norminette:', Color.GREEN)} PASS")
 
-    print(f"{color('Failed:', Color.RED)} " f"{results.failed}")
+    if project.gfm_norminette.enabled:
+        if gfm_norminette_failed:
+            print(f"{color('GFM-Norminette:', Color.RED)} FAIL")
+        else:
+            print(f"{color('GFM-Norminette:', Color.GREEN)} PASS")
 
+    print(f"{color('Passed:', Color.GREEN)} {results.passed}")
+    print(f"{color('Failed:', Color.RED)} {results.failed}")
     print(f"{color('Unexpected:', Color.YELLOW)} " f"{results.unexpected}")
-
-    print(f"{color('Errors:', Color.MAGENTA)} " f"{results.errors}")
-
-    print(f"{color('Total:', Color.BOLD)}  " f"{results.total}")
+    print(f"{color('Errors:', Color.MAGENTA)} {results.errors}")
+    print(f"{color('Total:', Color.BOLD)}  {results.total}")
 
     print(
         color(
