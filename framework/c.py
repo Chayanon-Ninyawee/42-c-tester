@@ -859,6 +859,30 @@ class CContext:
 
             harness.write_text(source)
 
+            if self.debug:
+                print()
+                print(
+                    color(
+                        "  ──────────────────── C CODE " "────────────────────",
+                        Color.YELLOW,
+                    )
+                )
+
+                for line in source.splitlines():
+                    print(
+                        color(
+                            "  " + line,
+                            Color.YELLOW,
+                        )
+                    )
+
+                print(
+                    color(
+                        "  ────────────────────────────────────────────────",
+                        Color.YELLOW,
+                    )
+                )
+
             command = [
                 "cc",
                 "-g",
@@ -938,30 +962,6 @@ class CContext:
                     )
 
                 raise RuntimeError("test compilation failed:\n\n" + result.stderr)
-
-            if self.debug:
-                print()
-                print(
-                    color(
-                        "  ──────────────────── C CODE " "────────────────────",
-                        Color.YELLOW,
-                    )
-                )
-
-                for line in source.splitlines():
-                    print(
-                        color(
-                            "  " + line,
-                            Color.YELLOW,
-                        )
-                    )
-
-                print(
-                    color(
-                        "  ────────────────────────────────────────────────",
-                        Color.YELLOW,
-                    )
-                )
 
             if self.debug:
                 result = run_debug_process(
