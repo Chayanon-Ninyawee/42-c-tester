@@ -11,6 +11,7 @@ class BuildConfig:
 
     # cc
     compiler: str = "cc"
+    compile_only: bool = False
     flags: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     output: str = "a.out"

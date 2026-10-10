@@ -281,10 +281,14 @@ class CCode:
         self._assertions = []
         self._malloc_assertions = []
 
+        self._manual_failures = []
+
         self.failures = []
         self.reference_failures = []
 
         self._malloc = CCodeMalloc(self)
+
+        self._cflags = []
 
     @property
     def malloc(self):
@@ -395,6 +399,30 @@ class CCode:
 
         return self
 
+    def cflags(self, flags: list[str]):
+        self._require_configure()
+    
+        if not isinstance(flags, list):
+            raise TypeError("compiler flags must be a list")
+    
+        if not all(isinstance(flag, str) for flag in flags):
+            raise TypeError("each compiler flag must be a string")
+    
+        self._cflags = list(flags)
+    
+        return self
+
+    def fail(self, message):
+        if not isinstance(message, str):
+            raise TypeError("failure message must be a string")
+    
+        if not message:
+            raise ValueError("failure message cannot be empty")
+    
+        self._manual_failures.append(message)
+    
+        return self
+
     def _require_configure(self):
         if self.executed:
             raise RuntimeError("cannot configure C code after it has been executed")
@@ -404,10 +432,14 @@ class CCode:
             self.run()
 
     def _run_assertions(self):
-        self.failures = []
+        self.failures = list(self._manual_failures)
         self.reference_failures = []
 
         for assertion in self._assertions:
+            if assertion.kind == "fail":
+                self.failures.append(assertion.message)
+                continue
+
             actual = self._get_assertion_value(assertion)
 
             if self._assertion_matches(assertion, actual):
@@ -905,6 +937,7 @@ class CContext:
                 )
 
             command.extend(self.project.test.cflags)
+            command.extend(test._cflags)
 
             command.extend(
                 [

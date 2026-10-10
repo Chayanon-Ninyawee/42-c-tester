@@ -54,21 +54,25 @@ class MakeBuilder(Builder):
 
 
 class CCBuilder(Builder):
-    def build(self) -> Path:
+    def build(self) -> Path | None:
         if shutil.which(self.config.compiler) is None:
             raise BuildError(
-                f"compiler '{self.config.compiler}' " "was not found in PATH"
+                f"compiler '{self.config.compiler}' "
+                "was not found in PATH"
             )
-
-        output = self.project_dir / self.config.output
 
         command = [
             self.config.compiler,
             *self.config.flags,
-            *self.config.sources,
-            "-o",
-            str(output),
         ]
+
+        if self.config.compile_only:
+            command.append("-c")
+            command.extend(self.config.sources)
+        else:
+            output = self.project_dir / self.config.output
+            command.extend(self.config.sources)
+            command.extend(["-o", str(output)])
 
         print(
             color(
@@ -84,11 +88,14 @@ class CCBuilder(Builder):
 
         if result.returncode != 0:
             raise BuildError(
-                f"{self.config.compiler} failed " f"(exit code {result.returncode})"
+                f"{self.config.compiler} failed "
+                f"(exit code {result.returncode})"
             )
 
-        return output
+        if self.config.compile_only:
+            return None
 
+        return output
 
 def create_builder(
     project_dir: Path,
